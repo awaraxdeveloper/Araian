@@ -153,41 +153,41 @@ export default function LoginPage({ onLoginSuccess }) {
         {/* LoginForm */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-neutral-400 mb-1">
+            <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
               Username
             </label>
-            <div className="relative">
-              <User className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
+            <div className="relative flex items-center">
+              <User className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter username"
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-red-600 transition-colors"
+                className="w-full h-11 bg-neutral-950/80 border border-neutral-800 rounded-xl pl-10 pr-4 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-neutral-400 mb-1">
+            <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
               Password
             </label>
-            <div className="relative">
-              <KeyRound className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
+            <div className="relative flex items-center">
+              <KeyRound className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 pl-9 pr-4 text-sm text-white focus:outline-none focus:border-red-600 transition-colors"
+                className="w-full h-11 bg-neutral-950/80 border border-neutral-800 rounded-xl pl-10 pr-4 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
               />
             </div>
           </div>
 
           {error && (
-            <div className="p-3 bg-red-950/50 border border-red-800/60 rounded-xl flex items-center space-x-2 text-xs text-red-400">
+            <div className="p-3.5 bg-red-950/50 border border-red-800/60 rounded-xl flex items-center gap-2.5 text-xs text-red-400 animate-in fade-in">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -196,7 +196,7 @@ export default function LoginPage({ onLoginSuccess }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-all duration-200 text-xs tracking-wider uppercase shadow-lg shadow-red-950/50 disabled:opacity-50 mt-2"
+            className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-all duration-200 text-xs tracking-wider uppercase shadow-lg shadow-red-950/60 disabled:opacity-50 mt-2 flex items-center justify-center cursor-pointer active:scale-[0.99]"
           >
             {loading
               ? "Authenticating..."

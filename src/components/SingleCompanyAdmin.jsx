@@ -29,6 +29,11 @@ import {
   FileText,
   PieChart,
 } from "lucide-react";
+import CustomMonthPicker from "./ui/CustomMonthPicker";
+import CustomYearPicker from "./ui/CustomYearPicker";
+import CustomDayPicker from "./ui/CustomDayPicker";
+import CustomDatePicker from "./ui/CustomDatePicker";
+import CustomSelect from "./ui/CustomSelect";
 
 // Modernized styling tokens with native dark color-scheme calendar support
 const inputBase =
@@ -834,39 +839,50 @@ export default function SingleCompanyAdmin({
     <div className="fixed inset-0 flex bg-neutral-950 text-neutral-100 font-sans overflow-hidden">
       {/* TOAST NOTIFICATION */}
       {toast.show && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border transition-all duration-300 bg-neutral-900 border-neutral-700 text-white max-w-[90vw]">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl shadow-black/80 border border-neutral-800 bg-neutral-900/95 backdrop-blur-xl text-white max-w-[90vw] animate-toast">
           {toast.type === "error" ? (
-            <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+            <div className="p-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 shrink-0">
+              <AlertCircle className="w-4 h-4" />
+            </div>
           ) : (
-            <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+            <div className="p-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
           )}
           <span className="text-xs font-semibold whitespace-nowrap">
             {toast.message}
           </span>
           <button
+            type="button"
             onClick={() => setToast((prev) => ({ ...prev, show: false }))}
-            className="text-neutral-500 hover:text-white transition-colors"
+            className="p-1 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-800 transition-colors ml-1 cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
       {/* CONFIRMATION MODAL */}
       {confirmModal.show && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 shrink-0">
-                <AlertCircle className="w-5 h-5" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-neutral-900/95 border border-neutral-800 rounded-3xl p-6 sm:p-7 w-full max-w-md space-y-5 shadow-2xl shadow-black/90 animate-popover relative overflow-hidden">
+            <div className="absolute -top-12 -right-12 w-36 h-36 bg-red-600/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-red-600/10 border border-red-500/20 rounded-2xl text-red-500 shrink-0 shadow-inner">
+                <AlertCircle className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-white">
-                {confirmModal.title}
-              </h3>
+              <div className="space-y-1 pt-0.5">
+                <h3 className="text-base font-extrabold text-white tracking-wide">
+                  {confirmModal.title}
+                </h3>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  {confirmModal.message}
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-neutral-400">{confirmModal.message}</p>
             <div className="flex gap-3 pt-2">
               <button
+                type="button"
                 onClick={() =>
                   setConfirmModal({
                     show: false,
@@ -875,13 +891,14 @@ export default function SingleCompanyAdmin({
                     onConfirm: null,
                   })
                 }
-                className="flex-1 bg-neutral-800 hover:bg-neutral-700 py-2.5 rounded-xl text-xs font-bold text-neutral-300 transition-colors"
+                className="flex-1 h-11 bg-neutral-950/80 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-xs font-bold text-neutral-300 transition-all cursor-pointer active:scale-[0.99]"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={confirmModal.onConfirm}
-                className="flex-1 bg-red-600 hover:bg-red-700 py-2.5 rounded-xl text-xs font-bold text-white transition-colors"
+                className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-red-950/80 cursor-pointer active:scale-[0.99] flex items-center justify-center gap-2"
               >
                 Confirm Delete
               </button>
@@ -892,15 +909,30 @@ export default function SingleCompanyAdmin({
 
       {/* EMPLOYEE ADD/EDIT MODAL */}
       {employeeModalOpen && isAdmin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 w-full max-w-md space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white">
-                {editingEmpId ? "Edit employee" : "Add new employee"}
-              </h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-neutral-900/95 border border-neutral-800 rounded-3xl p-6 sm:p-7 w-full max-w-md space-y-6 shadow-2xl shadow-black/90 animate-popover relative">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-red-600/10 border border-red-500/20 rounded-2xl text-red-500">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">
+                    {editingEmpId
+                      ? "Edit Employee Details"
+                      : "Add New Employee"}
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    {editingEmpId
+                      ? "Update staff records & base salary"
+                      : "Register a new staff member into system"}
+                  </p>
+                </div>
+              </div>
               <button
+                type="button"
                 onClick={closeEmployeeModal}
-                className="text-neutral-500 hover:text-white transition-colors"
+                className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -908,8 +940,8 @@ export default function SingleCompanyAdmin({
 
             <form onSubmit={handleSaveEmployee} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-neutral-400 mb-1.5 block">
-                  Full name
+                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
+                  Full Name
                 </label>
                 <input
                   type="text"
@@ -918,12 +950,12 @@ export default function SingleCompanyAdmin({
                   placeholder="e.g. Ahmed Raza"
                   value={empName}
                   onChange={(e) => setEmpName(e.target.value)}
-                  className={inputClass}
+                  className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-neutral-400 mb-1.5 block">
-                  Monthly base salary (Rs.)
+                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
+                  Monthly Base Salary (Rs.)
                 </label>
                 <input
                   type="number"
@@ -932,23 +964,24 @@ export default function SingleCompanyAdmin({
                   placeholder="e.g. 45000"
                   value={empSalary}
                   onChange={(e) => setEmpSalary(e.target.value)}
-                  className={inputClass}
+                  className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
                 />
               </div>
-              <div className="flex gap-3 pt-2">
+
+              <div className="flex gap-3 pt-3 border-t border-neutral-800">
                 <button
                   type="button"
                   onClick={closeEmployeeModal}
-                  className="flex-1 bg-neutral-800 hover:bg-neutral-700 py-2.5 rounded-xl text-xs font-bold text-neutral-300 transition-colors"
+                  className="flex-1 h-11 bg-neutral-950/80 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-xs font-bold text-neutral-300 transition-all cursor-pointer active:scale-[0.99]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-red-600 hover:bg-red-700 py-2.5 rounded-xl text-xs font-bold text-white transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-red-950/80 cursor-pointer active:scale-[0.99] flex items-center justify-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
-                  {editingEmpId ? "Save changes" : "Add employee"}
+                  <span>{editingEmpId ? "Save Changes" : "Add Employee"}</span>
                 </button>
               </div>
             </form>
@@ -1070,17 +1103,20 @@ export default function SingleCompanyAdmin({
             <div className="space-y-6 w-full">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
-                  <h3 className="text-lg font-bold text-white">Employees</h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">
-                    {employees.length} registered
+                  <h3 className="text-lg font-extrabold text-white">
+                    Employees
+                  </h3>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    {employees.length} registered staff members
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={openAddEmployeeModal}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs tracking-wider uppercase flex items-center gap-2 transition-colors shadow-lg shadow-red-950/40 active:scale-[0.98]"
+                  className="h-11 bg-red-600 hover:bg-red-700 text-white font-bold px-5 rounded-xl text-xs tracking-wider uppercase flex items-center gap-2 transition-all shadow-lg shadow-red-950/60 active:scale-[0.98] cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Add employee</span>
+                  <span>Add Employee</span>
                 </button>
               </div>
 
@@ -1159,60 +1195,23 @@ export default function SingleCompanyAdmin({
           {activeTab === "daily" && (
             <div className="space-y-6 w-full">
               <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4 w-full">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
-                      Month
-                    </label>
-                    <SelectField>
-                      <select
-                        value={selectedMonth}
-                        onChange={(e) =>
-                          setSelectedMonth(Number(e.target.value))
-                        }
-                        className={selectClass}
-                      >
-                        {months.map((m, i) => (
-                          <option key={m} value={i}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
-                    </SelectField>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
-                      Year
-                    </label>
-                    <SelectField>
-                      <select
-                        value={selectedYear}
-                        onChange={(e) =>
-                          setSelectedYear(Number(e.target.value))
-                        }
-                        className={selectClass}
-                      >
-                        {[2024, 2025, 2026, 2027].map((y) => (
-                          <option key={y} value={y}>
-                            {y}
-                          </option>
-                        ))}
-                      </select>
-                    </SelectField>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
-                      Day
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max={daysInMonth(selectedYear, selectedMonth)}
-                      value={selectedDay}
-                      onChange={(e) => setSelectedDay(Number(e.target.value))}
-                      className={inputClass}
-                    />
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+                  <CustomMonthPicker
+                    label="Month"
+                    value={selectedMonth}
+                    onChange={(m) => setSelectedMonth(m)}
+                  />
+                  <CustomYearPicker
+                    label="Year"
+                    value={selectedYear}
+                    onChange={(y) => setSelectedYear(y)}
+                  />
+                  <CustomDayPicker
+                    label="Day"
+                    value={selectedDay}
+                    maxDays={daysInMonth(selectedYear, selectedMonth)}
+                    onChange={(d) => setSelectedDay(d)}
+                  />
                 </div>
               </div>
 
@@ -1273,44 +1272,39 @@ export default function SingleCompanyAdmin({
           {activeTab === "history" && (
             <div className="space-y-6 w-full">
               <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4 w-full">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row items-end justify-between gap-4">
                   <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
+                      <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
                         Search Employee
                       </label>
-                      <div className="relative">
-                        <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3" />
+                      <div className="relative flex items-center">
+                        <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           type="text"
                           placeholder="Type employee name..."
                           value={historySearch}
                           onChange={(e) => setHistorySearch(e.target.value)}
-                          className={inputIconClass}
+                          className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl pl-10 pr-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
-                        Filter By Date
-                      </label>
-                      <div className="relative">
-                        <Calendar className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3 pointer-events-none" />
-                        <input
-                          type="date"
-                          value={historyDateFilter}
-                          onChange={(e) => setHistoryDateFilter(e.target.value)}
-                          className={inputIconClass}
-                        />
-                      </div>
+                      <CustomDatePicker
+                        label="Filter By Date"
+                        value={historyDateFilter}
+                        onChange={(val) => setHistoryDateFilter(val)}
+                        placeholder="Select date to filter..."
+                      />
                     </div>
                   </div>
 
-                  <div className="w-full sm:w-auto pt-2 sm:pt-4">
+                  <div className="w-full sm:w-auto">
                     <button
+                      type="button"
                       onClick={downloadDailyAttendancePDF}
-                      className="w-full sm:w-auto bg-neutral-950 hover:bg-neutral-800 border border-neutral-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-colors shrink-0"
+                      className="w-full sm:w-auto h-11 bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-white font-bold px-4 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shrink-0 cursor-pointer active:scale-[0.99]"
                     >
                       <FileText className="w-4 h-4 text-red-500" />
                       <span>Daily Attendance PDF</span>
@@ -1385,33 +1379,17 @@ export default function SingleCompanyAdmin({
           {/* BULK ATTENDANCE TAB */}
           {activeTab === "bulk" && isAdmin && (
             <div className="space-y-6 w-full">
-              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-col sm:flex-row gap-4 w-full">
-                <SelectField className="flex-1">
-                  <select
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                    className={selectClass}
-                  >
-                    {months.map((m, i) => (
-                      <option key={m} value={i}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </SelectField>
-                <SelectField className="flex-1">
-                  <select
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    className={selectClass}
-                  >
-                    {[2024, 2025, 2026, 2027].map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                </SelectField>
+              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                <CustomMonthPicker
+                  label="Month"
+                  value={selectedMonth}
+                  onChange={(m) => setSelectedMonth(m)}
+                />
+                <CustomYearPicker
+                  label="Year"
+                  value={selectedYear}
+                  onChange={(y) => setSelectedYear(y)}
+                />
               </div>
 
               {employees.length === 0 ? (
@@ -1537,38 +1515,24 @@ export default function SingleCompanyAdmin({
           {/* 3. SALARY REPORTS TAB — PERFECT ALIGNMENT & STRUCTURE */}
           {activeTab === "reports" && isAdmin && (
             <div className="space-y-6 w-full">
-              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl flex flex-col sm:flex-row gap-4 w-full">
-                <SelectField className="flex-1">
-                  <select
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                    className={selectClass}
-                  >
-                    {months.map((m, i) => (
-                      <option key={m} value={i}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </SelectField>
-                <SelectField className="flex-1">
-                  <select
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    className={selectClass}
-                  >
-                    {[2024, 2025, 2026, 2027].map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                </SelectField>
+              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl grid grid-cols-1 sm:grid-cols-3 gap-4 items-end w-full">
+                <CustomMonthPicker
+                  label="Month"
+                  value={selectedMonth}
+                  onChange={(m) => setSelectedMonth(m)}
+                />
+                <CustomYearPicker
+                  label="Year"
+                  value={selectedYear}
+                  onChange={(y) => setSelectedYear(y)}
+                />
                 <button
+                  type="button"
                   onClick={generateMonthlyReport}
-                  className="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-xl font-bold text-xs uppercase text-white shadow-lg transition-colors active:scale-[0.99]"
+                  className="h-11 bg-red-600 hover:bg-red-700 px-6 rounded-xl font-bold text-xs uppercase tracking-wider text-white shadow-lg shadow-red-950/60 transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
                 >
-                  Generate report
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Generate Report</span>
                 </button>
               </div>
 
@@ -1943,47 +1907,19 @@ export default function SingleCompanyAdmin({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+                <CustomMonthPicker
+                  label="Month"
+                  value={calcMonth}
+                  onChange={(m) => setCalcMonth(m)}
+                />
+                <CustomYearPicker
+                  label="Year"
+                  value={calcYear}
+                  onChange={(y) => setCalcYear(y)}
+                />
                 <div>
-                  <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
-                    Month
-                  </label>
-                  <SelectField>
-                    <select
-                      value={calcMonth}
-                      onChange={(e) => setCalcMonth(Number(e.target.value))}
-                      className={selectClass}
-                    >
-                      {months.map((m, i) => (
-                        <option key={m} value={i}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </SelectField>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
-                    Year
-                  </label>
-                  <SelectField>
-                    <select
-                      value={calcYear}
-                      onChange={(e) => setCalcYear(Number(e.target.value))}
-                      className={selectClass}
-                    >
-                      {[2024, 2025, 2026, 2027].map((y) => (
-                        <option key={y} value={y}>
-                          {y}
-                        </option>
-                      ))}
-                    </select>
-                  </SelectField>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
+                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
                     Monthly Base Salary (Rs.)
                   </label>
                   <input
@@ -1992,14 +1928,14 @@ export default function SingleCompanyAdmin({
                     placeholder="e.g. 50000"
                     value={calcSalary}
                     onChange={(e) => setCalcSalary(e.target.value)}
-                    className={inputClass}
+                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                 <div>
-                  <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
+                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
                     Full Days Worked
                   </label>
                   <input
@@ -2008,11 +1944,11 @@ export default function SingleCompanyAdmin({
                     placeholder="Full Days"
                     value={calcFull}
                     onChange={(e) => setCalcFull(Number(e.target.value))}
-                    className={inputClass}
+                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
+                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
                     Half Days Worked
                   </label>
                   <input
@@ -2021,11 +1957,11 @@ export default function SingleCompanyAdmin({
                     placeholder="Half Days"
                     value={calcHalf}
                     onChange={(e) => setCalcHalf(Number(e.target.value))}
-                    className={inputClass}
+                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
+                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
                     Holidays
                   </label>
                   <input
@@ -2034,14 +1970,14 @@ export default function SingleCompanyAdmin({
                     placeholder="Holidays"
                     value={calcHoliday}
                     onChange={(e) => setCalcHoliday(Number(e.target.value))}
-                    className={inputClass}
+                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <div>
-                  <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
+                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
                     Overtime Hours (1.25x Rate)
                   </label>
                   <input
@@ -2050,12 +1986,12 @@ export default function SingleCompanyAdmin({
                     placeholder="e.g. 10 hours"
                     value={calcOvertimeHours}
                     onChange={(e) => setCalcOvertimeHours(e.target.value)}
-                    className={inputClass}
+                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-semibold text-neutral-400 uppercase mb-1 block">
+                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
                     Advance / Deductions (Rs.)
                   </label>
                   <input
@@ -2064,16 +2000,18 @@ export default function SingleCompanyAdmin({
                     placeholder="e.g. 2000"
                     value={calcAdvanceDeductions}
                     onChange={(e) => setCalcAdvanceDeductions(e.target.value)}
-                    className={inputClass}
+                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
                   />
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={handleCalculateExtra}
-                className="w-full bg-red-600 hover:bg-red-700 py-3.5 rounded-xl font-bold text-xs text-white uppercase tracking-wider transition-colors active:scale-[0.99] shadow-lg shadow-red-950/50"
+                className="w-full h-12 bg-red-600 hover:bg-red-700 rounded-xl font-bold text-xs text-white uppercase tracking-wider transition-all active:scale-[0.99] shadow-lg shadow-red-950/60 cursor-pointer flex items-center justify-center gap-2"
               >
-                Calculate Payroll Breakdown
+                <Calculator className="w-4 h-4" />
+                <span>Calculate Payroll Breakdown</span>
               </button>
 
               {calcResult && (
