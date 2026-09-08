@@ -1,5 +1,5 @@
 import React from "react";
-import SingleCompanyAdmin from "../lib/supabaseClient";
+import SingleCompanyAdmin from "./SingleCompanyAdmin";
 
 export default function AwaisAutosAdmin({ currentUser, onLogout, companyId }) {
   return (

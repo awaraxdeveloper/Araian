@@ -28,6 +28,7 @@ import {
   Download,
   FileText,
   PieChart,
+  User,
 } from "lucide-react";
 import CustomMonthPicker from "./ui/CustomMonthPicker";
 import CustomYearPicker from "./ui/CustomYearPicker";
@@ -102,6 +103,7 @@ export default function SingleCompanyAdmin({
   const [calcOvertimeHours, setCalcOvertimeHours] = useState(0);
   const [calcAdvanceDeductions, setCalcAdvanceDeductions] = useState(0);
   const [calcResult, setCalcResult] = useState(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   // Custom Toast & Modal States
   const [toast, setToast] = useState({
@@ -180,7 +182,12 @@ export default function SingleCompanyAdmin({
       .channel(`realtime_company_${companyId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "attendance" },
+        {
+          event: "*",
+          schema: "public",
+          table: "attendance",
+          filter: `company_id=eq.${companyId}`,
+        },
         () => {
           loadDailyAttendance();
           fetchAttendanceHistory();
@@ -201,7 +208,12 @@ export default function SingleCompanyAdmin({
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "bulk_attendance" },
+        {
+          event: "*",
+          schema: "public",
+          table: "bulk_attendance",
+          filter: `company_id=eq.${companyId}`,
+        },
         () => {
           loadBulkAttendance();
         }
@@ -303,8 +315,17 @@ export default function SingleCompanyAdmin({
       "Are you sure? This will remove all associated attendance logs permanently.",
       async () => {
         try {
-          await supabase.from("attendance").delete().eq("employee_id", id);
-          await supabase.from("bulk_attendance").delete().eq("employee_id", id);
+          // Delete attendance and bulk records for this employee, scoped to company
+          await supabase
+            .from("attendance")
+            .delete()
+            .eq("employee_id", id)
+            .eq("company_id", companyId);
+          await supabase
+            .from("bulk_attendance")
+            .delete()
+            .eq("employee_id", id)
+            .eq("company_id", companyId);
           const { error } = await supabase
             .from("employees")
             .delete()
@@ -333,6 +354,7 @@ export default function SingleCompanyAdmin({
         .from("attendance")
         .select("id, employee_id, date, status")
         .in("employee_id", empIds)
+        .eq("company_id", companyId)
         .order("date", { ascending: false });
 
       if (error) throw error;
@@ -357,15 +379,14 @@ export default function SingleCompanyAdmin({
       return;
     }
     const dateStr = makeDateStr(selectedYear, selectedMonth, selectedDay);
+    const empIds = employees.map((e) => e.id);
     try {
       const { data, error } = await supabase
         .from("attendance")
         .select("employee_id, status")
-        .in(
-          "employee_id",
-          employees.map((e) => e.id)
-        )
-        .eq("date", dateStr);
+        .in("employee_id", empIds)
+        .eq("date", dateStr)
+        .eq("company_id", companyId);
 
       if (error) throw error;
       const mapped = {};
@@ -385,25 +406,46 @@ export default function SingleCompanyAdmin({
     setDailyAttendance((prev) => ({ ...prev, [empId]: status }));
   };
 
+  // UPDATED: Manual check+update/insert to enforce company isolation
   const saveDailyAttendance = async () => {
     if (employees.length === 0) return;
     const dateStr = makeDateStr(selectedYear, selectedMonth, selectedDay);
     try {
-      const results = await Promise.all(
-        employees.map((emp) =>
-          supabase.from("attendance").upsert(
-            {
-              employee_id: emp.id,
-              date: dateStr,
-              status: dailyAttendance[emp.id] || "absent",
-            },
-            { onConflict: "employee_id,date" }
-          )
-        )
-      );
+      const promises = employees.map(async (emp) => {
+        const status = dailyAttendance[emp.id] || "absent";
 
-      const failed = results.find((r) => r.error);
-      if (failed) throw failed.error;
+        // 1. Check existing record
+        const { data: existing, error: findError } = await supabase
+          .from("attendance")
+          .select("id")
+          .eq("employee_id", emp.id)
+          .eq("date", dateStr)
+          .eq("company_id", companyId)
+          .maybeSingle();
+
+        if (findError) throw findError;
+
+        if (existing) {
+          // Update
+          const { error } = await supabase
+            .from("attendance")
+            .update({ status })
+            .eq("id", existing.id)
+            .eq("company_id", companyId); // extra safety
+          if (error) throw error;
+        } else {
+          // Insert
+          const { error } = await supabase.from("attendance").insert({
+            employee_id: emp.id,
+            date: dateStr,
+            status,
+            company_id: companyId,
+          });
+          if (error) throw error;
+        }
+      });
+
+      await Promise.all(promises);
 
       triggerToast(`Attendance saved for ${dateStr}`);
       fetchAttendanceHistory();
@@ -425,7 +467,8 @@ export default function SingleCompanyAdmin({
           "employee_id",
           employees.map((e) => e.id)
         )
-        .eq("month_year", monthYear);
+        .eq("month_year", monthYear)
+        .eq("company_id", companyId);
 
       if (error) throw error;
       const mapped = {};
@@ -441,26 +484,44 @@ export default function SingleCompanyAdmin({
     if (activeTab === "bulk") loadBulkAttendance();
   }, [activeTab, selectedMonth, selectedYear, employees]);
 
+  // UPDATED: Manual check+update/insert for bulk attendance
   const saveBulkAttendance = async () => {
     if (!isAdmin || employees.length === 0) return;
     const monthYear = makeMonthYearStr(selectedYear, selectedMonth);
     try {
-      const results = await Promise.all(
-        employees.map((emp) => {
-          const days = Number(bulkDays[emp.id] || 0);
-          return supabase.from("bulk_attendance").upsert(
-            {
-              employee_id: emp.id,
-              month_year: monthYear,
-              working_days: days,
-            },
-            { onConflict: "employee_id,month_year" }
-          );
-        })
-      );
+      const promises = employees.map(async (emp) => {
+        const days = Number(bulkDays[emp.id] || 0);
 
-      const failed = results.find((r) => r.error);
-      if (failed) throw failed.error;
+        // Check existing record
+        const { data: existing, error: findError } = await supabase
+          .from("bulk_attendance")
+          .select("id")
+          .eq("employee_id", emp.id)
+          .eq("month_year", monthYear)
+          .eq("company_id", companyId)
+          .maybeSingle();
+
+        if (findError) throw findError;
+
+        if (existing) {
+          const { error } = await supabase
+            .from("bulk_attendance")
+            .update({ working_days: days })
+            .eq("id", existing.id)
+            .eq("company_id", companyId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("bulk_attendance").insert({
+            employee_id: emp.id,
+            month_year: monthYear,
+            working_days: days,
+            company_id: companyId,
+          });
+          if (error) throw error;
+        }
+      });
+
+      await Promise.all(promises);
 
       triggerToast(
         `Bulk attendance saved for ${months[selectedMonth]} ${selectedYear}`
@@ -499,7 +560,8 @@ export default function SingleCompanyAdmin({
         "employee_id",
         employees.map((e) => e.id)
       )
-      .eq("month_year", monthYear);
+      .eq("month_year", monthYear)
+      .eq("company_id", companyId);
 
     const bulkMap = {};
     if (bulkData)
@@ -516,7 +578,8 @@ export default function SingleCompanyAdmin({
         employees.map((e) => e.id)
       )
       .gte("date", startDate)
-      .lte("date", endDate);
+      .lte("date", endDate)
+      .eq("company_id", companyId);
 
     const dailyMap = {};
     if (dailyData) {
@@ -759,14 +822,13 @@ export default function SingleCompanyAdmin({
         currentDate.getMonth(),
         currentDate.getDate()
       );
+      const empIds = employees.map((e) => e.id);
       const { data, error } = await supabase
         .from("attendance")
         .select("employee_id, status")
-        .in(
-          "employee_id",
-          employees.map((e) => e.id)
-        )
-        .eq("date", todayStr);
+        .in("employee_id", empIds)
+        .eq("date", todayStr)
+        .eq("company_id", companyId);
 
       if (error) throw error;
       setTodayAttendance(data || []);
@@ -1082,17 +1144,33 @@ export default function SingleCompanyAdmin({
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            {isAdmin ? (
-              <span className="inline-flex items-center space-x-1 px-2.5 py-1 bg-red-500/10 border border-red-500/20 rounded-full text-[11px] font-bold text-red-400">
-                <ShieldAlert className="w-3.5 h-3.5 mr-1" /> Admin:{" "}
-                {displayName}
-              </span>
-            ) : (
-              <span className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[11px] font-bold text-emerald-400">
-                <UserCheck className="w-3.5 h-3.5 mr-1" /> Manager:{" "}
-                {displayName}
-              </span>
+          {/* Profile dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="flex items-center space-x-2 focus:outline-none"
+            >
+              <div className="w-9 h-9 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-300 hover:bg-neutral-700 transition-colors">
+                <User className="w-5 h-5" />
+              </div>
+            </button>
+
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl shadow-black/80 p-2 z-50 animate-popover">
+                <div className="px-3 py-2 border-b border-neutral-800">
+                  <p className="text-sm font-bold text-white">{displayName}</p>
+                  <p className="text-xs text-neutral-400">
+                    {isAdmin ? "Administrator" : "Manager"}
+                  </p>
+                </div>
+                <button
+                  onClick={onLogout}
+                  className="w-full mt-1 flex items-center space-x-2 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:bg-red-950/40 transition-all"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Logout</span>
+                </button>
+              </div>
             )}
           </div>
         </header>
