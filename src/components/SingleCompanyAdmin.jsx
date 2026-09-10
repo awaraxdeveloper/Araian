@@ -29,12 +29,19 @@ import {
   FileText,
   PieChart,
   User,
+  UserPlus,
+  Phone,
+  MapPin,
+  CreditCard,
+  Briefcase,
+  DollarSign,
 } from "lucide-react";
 import CustomMonthPicker from "./ui/CustomMonthPicker";
 import CustomYearPicker from "./ui/CustomYearPicker";
 import CustomDayPicker from "./ui/CustomDayPicker";
 import CustomDatePicker from "./ui/CustomDatePicker";
 import CustomSelect from "./ui/CustomSelect";
+import CustomTimePicker from "./ui/CustomTimePicker";
 
 // Modernized styling tokens with native dark color-scheme calendar support
 const inputBase =
@@ -78,22 +85,26 @@ export default function SingleCompanyAdmin({
   const [selectedDay, setSelectedDay] = useState(currentDate.getDate());
 
   // Attendance & Reports
-  const [dailyAttendance, setDailyAttendance] = useState({});
+  const [dailyStatus, setDailyStatus] = useState({});
+  const [dailyCheckIn, setDailyCheckIn] = useState({});
   const [bulkDays, setBulkDays] = useState({});
   const [bulkReports, setBulkReports] = useState([]);
   const [monthlyReports, setMonthlyReports] = useState([]);
 
-  // Attendance History State
+  // Attendance History
   const [historyRecords, setHistoryRecords] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [historyDateFilter, setHistoryDateFilter] = useState("");
 
-  // Analytics — today's attendance snapshot
+  // Analytics
   const [todayAttendance, setTodayAttendance] = useState([]);
   const [todayAttendanceLoading, setTodayAttendanceLoading] = useState(false);
 
-  // Extra Calculator Logic States
+  // Manager lock state
+  const [isLocked, setIsLocked] = useState(false);
+
+  // Extra Calculator
   const [calcMonth, setCalcMonth] = useState(currentDate.getMonth());
   const [calcYear, setCalcYear] = useState(currentDate.getFullYear());
   const [calcSalary, setCalcSalary] = useState("");
@@ -105,7 +116,44 @@ export default function SingleCompanyAdmin({
   const [calcResult, setCalcResult] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // Custom Toast & Modal States
+  // Form & Date States (add these)
+  const [empFatherName, setEmpFatherName] = useState("");
+  const [empCnic, setEmpCnic] = useState("");
+  const [empFatherCnic, setEmpFatherCnic] = useState("");
+  const [empAddress, setEmpAddress] = useState("");
+  const [empMobile, setEmpMobile] = useState("");
+  const [empEmergencyContact, setEmpEmergencyContact] = useState("");
+  const [empDateOfJoining, setEmpDateOfJoining] = useState("");
+  const [empReference, setEmpReference] = useState("");
+  const [empStartingSalary, setEmpStartingSalary] = useState("");
+  // Add this new state near the other state declarations (around line 60)
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+
+  // Add this function to open employee profile
+  const openEmployeeProfile = (emp) => {
+    setSelectedEmployee(emp);
+    setProfileModalOpen(true);
+  };
+
+  // Add this function to close employee profile
+  const closeEmployeeProfile = () => {
+    setProfileModalOpen(false);
+    setSelectedEmployee(null);
+  };
+
+  // Add this utility function to format dates
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "Not provided";
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  // Toast & Modal
   const [toast, setToast] = useState({
     show: false,
     message: "",
@@ -140,9 +188,7 @@ export default function SingleCompanyAdmin({
 
   const triggerToast = (message, type = "success") => {
     setToast({ show: true, message, type });
-    setTimeout(() => {
-      setToast((prev) => ({ ...prev, show: false }));
-    }, 3500);
+    setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 3500);
   };
 
   const triggerConfirm = (title, message, onConfirmFn) => {
@@ -162,22 +208,21 @@ export default function SingleCompanyAdmin({
     });
   };
 
-  // 1. DATA ISOLATION RESET & REALTIME SUBSCRIPTION
+  // 1. DATA ISOLATION RESET & REALTIME
   useEffect(() => {
     if (!companyId) return;
-
-    // Strict reset of all local company data to prevent data leakage across company logins
     setEmployees([]);
-    setDailyAttendance({});
+    setDailyStatus({});
+    setDailyCheckIn({});
     setBulkDays({});
     setBulkReports([]);
     setMonthlyReports([]);
     setHistoryRecords([]);
     setTodayAttendance([]);
+    setIsLocked(false);
 
     fetchEmployees();
 
-    // Supabase Realtime Subscription: Instant sync between Admin & Manager
     const channel = supabase
       .channel(`realtime_company_${companyId}`)
       .on(
@@ -202,9 +247,7 @@ export default function SingleCompanyAdmin({
           table: "employees",
           filter: `company_id=eq.${companyId}`,
         },
-        () => {
-          fetchEmployees();
-        }
+        () => fetchEmployees()
       )
       .on(
         "postgres_changes",
@@ -214,15 +257,11 @@ export default function SingleCompanyAdmin({
           table: "bulk_attendance",
           filter: `company_id=eq.${companyId}`,
         },
-        () => {
-          loadBulkAttendance();
-        }
+        () => loadBulkAttendance()
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, [companyId]);
 
   const fetchEmployees = async () => {
@@ -234,7 +273,6 @@ export default function SingleCompanyAdmin({
         .select("*")
         .eq("company_id", companyId)
         .order("created_at", { ascending: true });
-
       if (error) throw error;
       setEmployees(data || []);
     } catch (err) {
@@ -244,18 +282,58 @@ export default function SingleCompanyAdmin({
     }
   };
 
+  // Helper: strip non‑digits
+  const onlyDigits = (str) => str.replace(/\D/g, "");
+
+  // Handler for CNIC fields (exactly 13 digits)
+  const handleCnicChange = (setter, value) => {
+    const digits = onlyDigits(value);
+    if (digits.length <= 13) {
+      setter(digits);
+    }
+  };
+
+  // Handler for number fields (only digits, any length)
+  const handleNumberChange = (setter, value) => {
+    const digits = onlyDigits(value);
+    setter(digits);
+  };
+
+  // Handler for name (auto‑uppercase)
+  const handleNameChange = (value) => {
+    setEmpName(value.toUpperCase());
+  };
+
   // Employee CRUD
   const closeEmployeeModal = () => {
     setEmployeeModalOpen(false);
     setEditingEmpId(null);
     setEmpName("");
     setEmpSalary("");
+    setEmpFatherName("");
+    setEmpCnic("");
+    setEmpFatherCnic("");
+    setEmpAddress("");
+    setEmpMobile("");
+    setEmpEmergencyContact("");
+    setEmpDateOfJoining("");
+    setEmpReference("");
+    setEmpStartingSalary("");
   };
 
   const openAddEmployeeModal = () => {
     setEditingEmpId(null);
     setEmpName("");
     setEmpSalary("");
+    setEmpFatherName("");
+    setEmpCnic("");
+    setEmpFatherCnic("");
+    setEmpAddress("");
+    setEmpMobile("");
+    setEmpEmergencyContact("");
+    setEmpDateOfJoining("");
+    setEmpReference("");
+    setEmpStartingSalary("");
     setEmployeeModalOpen(true);
   };
 
@@ -263,6 +341,15 @@ export default function SingleCompanyAdmin({
     setEditingEmpId(emp.id);
     setEmpName(emp.name);
     setEmpSalary(emp.base_salary);
+    setEmpFatherName(emp.father_name || "");
+    setEmpCnic(emp.cnic || "");
+    setEmpFatherCnic(emp.father_cnic || "");
+    setEmpAddress(emp.address || "");
+    setEmpMobile(emp.mobile || "");
+    setEmpEmergencyContact(emp.emergency_contact || "");
+    setEmpDateOfJoining(emp.date_of_joining || "");
+    setEmpReference(emp.reference || "");
+    setEmpStartingSalary(emp.starting_salary || "");
     setEmployeeModalOpen(true);
   };
 
@@ -274,29 +361,50 @@ export default function SingleCompanyAdmin({
     }
 
     if (!empName.trim() || !empSalary || Number(empSalary) < 0) {
-      triggerToast("Please provide a valid name and positive salary.", "error");
+      triggerToast(
+        "Please provide a valid name and positive current salary.",
+        "error"
+      );
+      return;
+    }
+
+    // Validate CNIC fields (must be exactly 13 digits if provided)
+    if (empCnic && empCnic.length !== 13) {
+      triggerToast("CNIC must be exactly 13 digits.", "error");
+      return;
+    }
+    if (empFatherCnic && empFatherCnic.length !== 13) {
+      triggerToast("Father's CNIC must be exactly 13 digits.", "error");
       return;
     }
 
     try {
+      const employeeData = {
+        name: empName.trim().toUpperCase(),
+        base_salary: Number(empSalary),
+        father_name: empFatherName.trim() || null,
+        cnic: empCnic || null,
+        father_cnic: empFatherCnic || null,
+        address: empAddress.trim() || null,
+        mobile: empMobile || null,
+        emergency_contact: empEmergencyContact || null,
+        date_of_joining: empDateOfJoining || null,
+        reference: empReference.trim() || null,
+        starting_salary: empStartingSalary ? Number(empStartingSalary) : null,
+      };
+
       if (editingEmpId) {
         const { error } = await supabase
           .from("employees")
-          .update({ name: empName.trim(), base_salary: Number(empSalary) })
+          .update(employeeData)
           .eq("id", editingEmpId)
           .eq("company_id", companyId);
-
         if (error) throw error;
         triggerToast("Employee updated successfully!");
       } else {
-        const { error } = await supabase.from("employees").insert([
-          {
-            company_id: companyId,
-            name: empName.trim(),
-            base_salary: Number(empSalary),
-          },
-        ]);
-
+        const { error } = await supabase
+          .from("employees")
+          .insert([{ ...employeeData, company_id: companyId }]);
         if (error) throw error;
         triggerToast("Employee added successfully!");
       }
@@ -315,7 +423,6 @@ export default function SingleCompanyAdmin({
       "Are you sure? This will remove all associated attendance logs permanently.",
       async () => {
         try {
-          // Delete attendance and bulk records for this employee, scoped to company
           await supabase
             .from("attendance")
             .delete()
@@ -341,7 +448,7 @@ export default function SingleCompanyAdmin({
     );
   };
 
-  // Attendance History Fetching
+  // Attendance History
   const fetchAttendanceHistory = async () => {
     if (!companyId || employees.length === 0) {
       setHistoryRecords([]);
@@ -352,11 +459,10 @@ export default function SingleCompanyAdmin({
       const empIds = employees.map((e) => e.id);
       const { data, error } = await supabase
         .from("attendance")
-        .select("id, employee_id, date, status")
+        .select("id, employee_id, date, status, check_in_time")
         .in("employee_id", empIds)
         .eq("company_id", companyId)
         .order("date", { ascending: false });
-
       if (error) throw error;
       setHistoryRecords(data || []);
     } catch (err) {
@@ -367,32 +473,68 @@ export default function SingleCompanyAdmin({
   };
 
   useEffect(() => {
-    if (activeTab === "history") {
-      fetchAttendanceHistory();
-    }
+    if (activeTab === "history") fetchAttendanceHistory();
   }, [activeTab, employees]);
 
   // Daily Attendance
   const loadDailyAttendance = async () => {
     if (!employees || employees.length === 0) {
-      setDailyAttendance({});
+      setDailyStatus({});
+      setDailyCheckIn({});
       return;
     }
-    const dateStr = makeDateStr(selectedYear, selectedMonth, selectedDay);
+
+    const dateStr = isAdmin
+      ? makeDateStr(selectedYear, selectedMonth, selectedDay)
+      : makeDateStr(
+          currentDate.getFullYear(),
+          currentDate.getMonth(),
+          currentDate.getDate()
+        );
+
     const empIds = employees.map((e) => e.id);
     try {
       const { data, error } = await supabase
         .from("attendance")
-        .select("employee_id, status")
+        .select("employee_id, status, check_in_time")
         .in("employee_id", empIds)
         .eq("date", dateStr)
         .eq("company_id", companyId);
 
       if (error) throw error;
-      const mapped = {};
-      if (data)
-        data.forEach((item) => (mapped[item.employee_id] = item.status));
-      setDailyAttendance(mapped);
+
+      const statusMap = {};
+      const checkInMap = {};
+      if (data) {
+        data.forEach((item) => {
+          statusMap[item.employee_id] = item.status;
+          checkInMap[item.employee_id] = item.check_in_time || "";
+        });
+      }
+      setDailyStatus(statusMap);
+      setDailyCheckIn(checkInMap);
+
+      // Check lock for manager
+      if (!isAdmin) {
+        const todayStr = makeDateStr(
+          currentDate.getFullYear(),
+          currentDate.getMonth(),
+          currentDate.getDate()
+        );
+        const { data: lockData, error: lockError } = await supabase
+          .from("manager_daily_locks")
+          .select("id")
+          .eq("user_id", currentUser.id)
+          .eq("company_id", companyId)
+          .eq("date", todayStr)
+          .maybeSingle();
+
+        if (lockError) {
+          triggerToast("Failed to check lock status", "error");
+        } else {
+          setIsLocked(!!lockData);
+        }
+      }
     } catch (err) {
       triggerToast(`Failed to load attendance: ${err.message}`, "error");
     }
@@ -403,18 +545,45 @@ export default function SingleCompanyAdmin({
   }, [activeTab, selectedMonth, selectedYear, selectedDay, employees]);
 
   const handleStatusChange = (empId, status) => {
-    setDailyAttendance((prev) => ({ ...prev, [empId]: status }));
+    if (isLocked) return;
+    setDailyStatus((prev) => ({ ...prev, [empId]: status }));
   };
 
-  // UPDATED: Manual check+update/insert to enforce company isolation
   const saveDailyAttendance = async () => {
     if (employees.length === 0) return;
-    const dateStr = makeDateStr(selectedYear, selectedMonth, selectedDay);
+
+    const dateStr = isAdmin
+      ? makeDateStr(selectedYear, selectedMonth, selectedDay)
+      : makeDateStr(
+          currentDate.getFullYear(),
+          currentDate.getMonth(),
+          currentDate.getDate()
+        );
+
+    if (!isAdmin) {
+      const todayStr = makeDateStr(
+        currentDate.getFullYear(),
+        currentDate.getMonth(),
+        currentDate.getDate()
+      );
+      if (dateStr !== todayStr) {
+        triggerToast("Managers can only mark attendance for today.", "error");
+        return;
+      }
+      if (isLocked) {
+        triggerToast(
+          "Today's attendance has already been saved. You cannot edit again.",
+          "error"
+        );
+        return;
+      }
+    }
+
     try {
       const promises = employees.map(async (emp) => {
-        const status = dailyAttendance[emp.id] || "absent";
+        const status = dailyStatus[emp.id] || "absent";
+        const checkIn = dailyCheckIn[emp.id] || null;
 
-        // 1. Check existing record
         const { data: existing, error: findError } = await supabase
           .from("attendance")
           .select("id")
@@ -426,19 +595,18 @@ export default function SingleCompanyAdmin({
         if (findError) throw findError;
 
         if (existing) {
-          // Update
           const { error } = await supabase
             .from("attendance")
-            .update({ status })
+            .update({ status, check_in_time: checkIn })
             .eq("id", existing.id)
-            .eq("company_id", companyId); // extra safety
+            .eq("company_id", companyId);
           if (error) throw error;
         } else {
-          // Insert
           const { error } = await supabase.from("attendance").insert({
             employee_id: emp.id,
             date: dateStr,
             status,
+            check_in_time: checkIn,
             company_id: companyId,
           });
           if (error) throw error;
@@ -446,6 +614,22 @@ export default function SingleCompanyAdmin({
       });
 
       await Promise.all(promises);
+
+      // Create lock for manager
+      if (!isAdmin) {
+        const todayStr = makeDateStr(
+          currentDate.getFullYear(),
+          currentDate.getMonth(),
+          currentDate.getDate()
+        );
+        await supabase
+          .from("manager_daily_locks")
+          .upsert(
+            { user_id: currentUser.id, company_id: companyId, date: todayStr },
+            { onConflict: "user_id, company_id, date" }
+          );
+        setIsLocked(true);
+      }
 
       triggerToast(`Attendance saved for ${dateStr}`);
       fetchAttendanceHistory();
@@ -469,7 +653,6 @@ export default function SingleCompanyAdmin({
         )
         .eq("month_year", monthYear)
         .eq("company_id", companyId);
-
       if (error) throw error;
       const mapped = {};
       if (data)
@@ -484,15 +667,12 @@ export default function SingleCompanyAdmin({
     if (activeTab === "bulk") loadBulkAttendance();
   }, [activeTab, selectedMonth, selectedYear, employees]);
 
-  // UPDATED: Manual check+update/insert for bulk attendance
   const saveBulkAttendance = async () => {
     if (!isAdmin || employees.length === 0) return;
     const monthYear = makeMonthYearStr(selectedYear, selectedMonth);
     try {
       const promises = employees.map(async (emp) => {
         const days = Number(bulkDays[emp.id] || 0);
-
-        // Check existing record
         const { data: existing, error: findError } = await supabase
           .from("bulk_attendance")
           .select("id")
@@ -500,9 +680,7 @@ export default function SingleCompanyAdmin({
           .eq("month_year", monthYear)
           .eq("company_id", companyId)
           .maybeSingle();
-
         if (findError) throw findError;
-
         if (existing) {
           const { error } = await supabase
             .from("bulk_attendance")
@@ -520,9 +698,7 @@ export default function SingleCompanyAdmin({
           if (error) throw error;
         }
       });
-
       await Promise.all(promises);
-
       triggerToast(
         `Bulk attendance saved for ${months[selectedMonth]} ${selectedYear}`
       );
@@ -604,18 +780,15 @@ export default function SingleCompanyAdmin({
         half = 0,
         hol = 0,
         abs = 0;
-
       for (let day = 1; day <= totalDays; day++) {
         const dateStr = makeDateStr(selectedYear, selectedMonth, day);
         const rec = records.find((r) => r.date === dateStr);
         const status = rec ? rec.status : "absent";
-
         if (status === "full") full++;
         else if (status === "half") half++;
         else if (status === "holiday") hol++;
         else abs++;
       }
-
       const paidHol = Math.min(hol, 4);
       const extraHol = Math.max(hol - 4, 0);
       abs += extraHol;
@@ -623,7 +796,6 @@ export default function SingleCompanyAdmin({
       const dailyRate = Number(emp.base_salary) / totalDays;
       const pay = Math.min(dailyRate * paidDays, Number(emp.base_salary));
       const bal = Number(emp.base_salary) - pay;
-
       return {
         ...emp,
         type: "daily",
@@ -643,30 +815,24 @@ export default function SingleCompanyAdmin({
     setMonthlyReports(report);
   };
 
-  // 5. ENHANCED EXTRA CALCULATOR LOGIC
+  // Extra Calculator
   const handleCalculateExtra = () => {
     const sal = Number(calcSalary);
     if (!sal || sal < 0) {
       triggerToast("Please enter a valid monthly base salary", "error");
       return;
     }
-
     const totalDays = daysInMonth(calcYear, calcMonth);
     const dailyRate = sal / totalDays;
-    const hourlyRate = dailyRate / 8; // Assuming 8-hour workday standard
-
+    const hourlyRate = dailyRate / 8;
     const paidHol = Math.min(calcHoliday, 4);
     const unpaidExtraHol = Math.max(calcHoliday - 4, 0);
-
     const workedDaysCredit = calcFull + calcHalf * 0.5 + paidHol;
     const basePay = Math.min(dailyRate * workedDaysCredit, sal);
-
-    const overtimePay = Number(calcOvertimeHours) * hourlyRate * 1.25; // 1.25x Overtime multiplier
+    const overtimePay = Number(calcOvertimeHours) * hourlyRate * 1.25;
     const deductions = Number(calcAdvanceDeductions);
-
     const netPayable = Math.max(basePay + overtimePay - deductions, 0);
     const balanceRemaining = Math.max(sal - netPayable, 0);
-
     setCalcResult({
       totalDays,
       dailyRate,
@@ -682,6 +848,7 @@ export default function SingleCompanyAdmin({
     });
   };
 
+  // Print helpers
   const triggerPrint = (title, elementId) => {
     const content = document.getElementById(elementId)?.innerHTML;
     if (!content) return;
@@ -718,13 +885,11 @@ export default function SingleCompanyAdmin({
     setTimeout(() => win.print(), 500);
   };
 
-  // 2. DAILY ATTENDANCE PDF DOWNLOAD FOR HISTORY
   const downloadDailyAttendancePDF = () => {
     const filterLabel = historyDateFilter
       ? `For Date: ${historyDateFilter}`
       : "All Recorded Logs";
     const title = `${companyName} - Daily Attendance Report (${filterLabel})`;
-
     const win = window.open("", "_blank", "width=950,height=800");
     const formattedRows = filteredHistory
       .map((rec) => {
@@ -734,6 +899,7 @@ export default function SingleCompanyAdmin({
           <td><strong>${rec.date}</strong></td>
           <td>${emp ? emp.name : "Unknown Employee"}</td>
           <td><span class="badge badge-${rec.status}">${rec.status}</span></td>
+          <td>${rec.check_in_time || "—"}</td>
         </tr>
       `;
       })
@@ -792,13 +958,14 @@ export default function SingleCompanyAdmin({
                 <th>Date</th>
                 <th>Employee Name</th>
                 <th>Attendance Status</th>
+                <th>Check‑in Time</th>
               </tr>
             </thead>
             <tbody>
               ${
                 formattedRows.length > 0
                   ? formattedRows
-                  : '<tr><td colspan="3" style="text-align:center">No records available</td></tr>'
+                  : '<tr><td colspan="4" style="text-align:center">No records available</td></tr>'
               }
             </tbody>
           </table>
@@ -809,7 +976,7 @@ export default function SingleCompanyAdmin({
     setTimeout(() => win.print(), 400);
   };
 
-  // Analytics — today's attendance snapshot
+  // Analytics
   const fetchTodayAttendance = async () => {
     if (employees.length === 0) {
       setTodayAttendance([]);
@@ -829,7 +996,6 @@ export default function SingleCompanyAdmin({
         .in("employee_id", empIds)
         .eq("date", todayStr)
         .eq("company_id", companyId);
-
       if (error) throw error;
       setTodayAttendance(data || []);
     } catch (err) {
@@ -843,9 +1009,7 @@ export default function SingleCompanyAdmin({
   };
 
   useEffect(() => {
-    if (activeTab === "analytics" && isAdmin) {
-      fetchTodayAttendance();
-    }
+    if (activeTab === "analytics" && isAdmin) fetchTodayAttendance();
   }, [activeTab, employees]);
 
   const availableTabs = isAdmin
@@ -853,7 +1017,7 @@ export default function SingleCompanyAdmin({
         { id: "employees", label: "Employees", icon: Users },
         { id: "daily", label: "Daily Attendance", icon: CalendarCheck },
         { id: "history", label: "Attendance History", icon: History },
-        { id: "bulk", label: "Bulk Attendance", icon: Layers },
+        { id: "bulk", label: "Bulk Attendance", icon: Layers, disabled: true },
         { id: "reports", label: "Salary Reports", icon: FileSpreadsheet },
         { id: "analytics", label: "Analytics", icon: BarChart3 },
         { id: "calculator", label: "Extra Calculator", icon: Calculator },
@@ -863,7 +1027,6 @@ export default function SingleCompanyAdmin({
         { id: "history", label: "Attendance History", icon: History },
       ];
 
-  // History filtering logic
   const filteredHistory = historyRecords.filter((rec) => {
     const emp = employees.find((e) => e.id === rec.employee_id);
     const empNameMatch = emp
@@ -873,7 +1036,6 @@ export default function SingleCompanyAdmin({
     return empNameMatch && dateMatch;
   });
 
-  // Analytics derived metrics
   const totalBudget = employees.reduce(
     (acc, e) => acc + Number(e.base_salary || 0),
     0
@@ -899,7 +1061,7 @@ export default function SingleCompanyAdmin({
 
   return (
     <div className="fixed inset-0 flex bg-neutral-950 text-neutral-100 font-sans overflow-hidden">
-      {/* TOAST NOTIFICATION */}
+      {/* TOAST */}
       {toast.show && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl shadow-black/80 border border-neutral-800 bg-neutral-900/95 backdrop-blur-xl text-white max-w-[90vw] animate-toast">
           {toast.type === "error" ? (
@@ -924,7 +1086,7 @@ export default function SingleCompanyAdmin({
         </div>
       )}
 
-      {/* CONFIRMATION MODAL */}
+      {/* CONFIRM MODAL */}
       {confirmModal.show && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="bg-neutral-900/95 border border-neutral-800 rounded-3xl p-6 sm:p-7 w-full max-w-md space-y-5 shadow-2xl shadow-black/90 animate-popover relative overflow-hidden">
@@ -969,80 +1131,294 @@ export default function SingleCompanyAdmin({
         </div>
       )}
 
+      {/* EMPLOYEE MODAL */}
       {/* EMPLOYEE ADD/EDIT MODAL */}
       {employeeModalOpen && isAdmin && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-neutral-900/95 border border-neutral-800 rounded-3xl p-6 sm:p-7 w-full max-w-md space-y-6 shadow-2xl shadow-black/90 animate-popover relative">
-            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-red-600/10 border border-red-500/20 rounded-2xl text-red-500">
-                  <Users className="w-5 h-5" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-black/90 via-black/80 to-black/90 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="bg-gradient-to-br from-neutral-900/98 via-neutral-900/95 to-neutral-950/98 border border-neutral-700/50 rounded-3xl p-6 sm:p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden shadow-[0_0_80px_-12px_rgba(220,38,38,0.15)] shadow-2xl animate-popover relative">
+            {/* Enhanced Glassmorphism Decorative Elements */}
+            <div className="absolute -top-32 -right-32 w-96 h-96 bg-gradient-to-br from-red-600/20 via-red-500/10 to-transparent rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-gradient-to-tr from-blue-600/10 via-purple-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
+
+            {/* Header with Enhanced Design */}
+            <div className="flex items-center justify-between border-b border-neutral-700/50 pb-6 mb-6 relative">
+              <div className="flex items-center gap-4">
+                <div className="relative p-3 bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+                  <UserPlus className="w-6 h-6 text-red-400 drop-shadow-[0_0_8px_rgba(220,38,38,0.3)]" />
+                  <div className="absolute inset-0 bg-gradient-to-tr from-red-500/20 to-transparent rounded-2xl animate-pulse" />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-white">
+                  <h3 className="text-2xl font-bold text-white tracking-tight bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
                     {editingEmpId
-                      ? "Edit Employee Details"
-                      : "Add New Employee"}
+                      ? "Update Employee Profile"
+                      : "Register New Employee"}
                   </h3>
-                  <p className="text-[11px] text-neutral-400">
+                  <p className="text-sm text-neutral-400 font-medium">
                     {editingEmpId
-                      ? "Update staff records & base salary"
-                      : "Register a new staff member into system"}
+                      ? "Modify employee details and salary information"
+                      : "Add a new staff member to the company"}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={closeEmployeeModal}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                className="p-2.5 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800/60 hover:border hover:border-neutral-700 transition-all duration-200 cursor-pointer group"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEmployee} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  placeholder="e.g. Ahmed Raza"
-                  value={empName}
-                  onChange={(e) => setEmpName(e.target.value)}
-                  className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
-                  Monthly Base Salary (Rs.)
-                </label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  placeholder="e.g. 45000"
-                  value={empSalary}
-                  onChange={(e) => setEmpSalary(e.target.value)}
-                  className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
-                />
+            <form onSubmit={handleSaveEmployee} className="space-y-8">
+              {/* Personal Information Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
+                  <div className="p-1.5 bg-red-500/20 rounded-lg">
+                    <User className="w-4 h-4 text-red-400" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
+                    Personal Information
+                  </span>
+                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1">
+                      Full Name <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      placeholder="e.g. AHMED RAZA"
+                      value={empName}
+                      onChange={(e) => handleNameChange(e.target.value)}
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none uppercase font-medium hover:border-neutral-600"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                      Father Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. MUHAMMAD RAZA"
+                      value={empFatherName}
+                      onChange={(e) =>
+                        setEmpFatherName(e.target.value.toUpperCase())
+                      }
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none hover:border-neutral-600"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="flex gap-3 pt-3 border-t border-neutral-800">
+              {/* CNIC / Contact Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
+                  <div className="p-1.5 bg-red-500/20 rounded-lg">
+                    <CreditCard className="w-4 h-4 text-red-400" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
+                    Identification & Contact
+                  </span>
+                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                      CNIC <span className="text-neutral-500">(13 digits)</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="e.g. 1234567890123"
+                      value={empCnic}
+                      onChange={(e) =>
+                        handleCnicChange(setEmpCnic, e.target.value)
+                      }
+                      maxLength="13"
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                      Father CNIC{" "}
+                      <span className="text-neutral-500">(13 digits)</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="e.g. 1234567890123"
+                      value={empFatherCnic}
+                      onChange={(e) =>
+                        handleCnicChange(setEmpFatherCnic, e.target.value)
+                      }
+                      maxLength="13"
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                      Mobile Number
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="e.g. 03001234567"
+                      value={empMobile}
+                      onChange={(e) =>
+                        handleNumberChange(setEmpMobile, e.target.value)
+                      }
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                      Emergency Contact
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="e.g. 03007654321"
+                      value={empEmergencyContact}
+                      onChange={(e) =>
+                        handleNumberChange(
+                          setEmpEmergencyContact,
+                          e.target.value
+                        )
+                      }
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
+                  <div className="p-1.5 bg-red-500/20 rounded-lg">
+                    <MapPin className="w-4 h-4 text-red-400" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
+                    Address
+                  </span>
+                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                </div>
+                <div className="space-y-1.5">
+                  <input
+                    type="text"
+                    placeholder="e.g. House #12, Street 5, Lahore"
+                    value={empAddress}
+                    onChange={(e) => setEmpAddress(e.target.value)}
+                    className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none hover:border-neutral-600"
+                  />
+                </div>
+              </div>
+
+              {/* Employment Details */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
+                  <div className="p-1.5 bg-red-500/20 rounded-lg">
+                    <Briefcase className="w-4 h-4 text-red-400" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
+                    Employment Details
+                  </span>
+                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                      Date of Joining
+                    </label>
+                    <CustomDatePicker
+                      value={empDateOfJoining}
+                      onChange={(val) => setEmpDateOfJoining(val)}
+                      placeholder="Select date"
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                      Reference
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Employee referral"
+                      value={empReference}
+                      onChange={(e) => setEmpReference(e.target.value)}
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none hover:border-neutral-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Salary Details */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
+                  <div className="p-1.5 bg-red-500/20 rounded-lg">
+                    <DollarSign className="w-4 h-4 text-red-400" />
+                  </div>
+                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
+                    Salary Details
+                  </span>
+                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                      Starting Salary{" "}
+                      <span className="text-neutral-500">(Rs.)</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="e.g. 40000"
+                      value={empStartingSalary}
+                      onChange={(e) =>
+                        handleNumberChange(setEmpStartingSalary, e.target.value)
+                      }
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1">
+                      Current Salary{" "}
+                      <span className="text-neutral-500">(Rs.)</span>{" "}
+                      <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      placeholder="e.g. 45000"
+                      value={empSalary}
+                      onChange={(e) =>
+                        handleNumberChange(setEmpSalary, e.target.value)
+                      }
+                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons with Enhanced Design */}
+              <div className="flex gap-4 pt-6 border-t-2 border-neutral-700/30">
                 <button
                   type="button"
                   onClick={closeEmployeeModal}
-                  className="flex-1 h-11 bg-neutral-950/80 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-xs font-bold text-neutral-300 transition-all cursor-pointer active:scale-[0.99]"
+                  className="flex-1 h-12 bg-neutral-950/80 hover:bg-neutral-800/80 border-2 border-neutral-700/50 hover:border-neutral-600 rounded-xl text-sm font-bold text-neutral-300 transition-all duration-200 cursor-pointer active:scale-[0.98] hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-red-950/80 cursor-pointer active:scale-[0.99] flex items-center justify-center gap-2"
+                  className="flex-1 h-12 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl text-sm font-bold transition-all duration-200 shadow-[0_4px_20px_rgba(220,38,38,0.4)] hover:shadow-[0_4px_30px_rgba(220,38,38,0.6)] cursor-pointer active:scale-[0.98] flex items-center justify-center gap-3 group"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
                   <span>{editingEmpId ? "Save Changes" : "Add Employee"}</span>
                 </button>
               </div>
@@ -1051,7 +1427,7 @@ export default function SingleCompanyAdmin({
         </div>
       )}
 
-      {/* MOBILE SIDEBAR OVERLAY */}
+      {/* MOBILE OVERLAY */}
       {mobileMenuOpen && (
         <div
           onClick={() => setMobileMenuOpen(false)}
@@ -1070,13 +1446,17 @@ export default function SingleCompanyAdmin({
         <div>
           <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
             <div className="flex items-center space-x-3 overflow-hidden">
-              <Building2 className="text-red-500 w-6 h-6 shrink-0" />
+              <img
+                src="/logo.svg"
+                alt="Company Logo"
+                className="w-[50px] h-[50px] object-contain shrink-0"
+              />
               <div className="overflow-hidden">
                 <h2 className="font-bold text-sm text-white truncate">
                   {companyName}
                 </h2>
                 <span className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
-                  {isAdmin ? "Admin Console" : "Manager Access"}
+                  {isAdmin ? "Admin Access" : "Manager Access"}
                 </span>
               </div>
             </div>
@@ -1087,7 +1467,6 @@ export default function SingleCompanyAdmin({
               <X className="w-5 h-5" />
             </button>
           </div>
-
           <nav className="p-3 space-y-1 overflow-y-auto">
             {availableTabs.map((tab) => {
               const Icon = tab.icon;
@@ -1096,11 +1475,14 @@ export default function SingleCompanyAdmin({
                 <button
                   key={tab.id}
                   onClick={() => {
+                    if (tab.disabled) return; // ← ADD THIS LINE
                     setActiveTab(tab.id);
                     setMobileMenuOpen(false);
                   }}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
-                    active
+                    tab.disabled // ← ADD THIS CONDITION
+                      ? "opacity-70 cursor-not-allowed text-neutral-600"
+                      : active
                       ? "bg-red-600 text-white shadow-lg shadow-red-950"
                       : "text-neutral-400 hover:bg-neutral-800 hover:text-white"
                   }`}
@@ -1112,7 +1494,6 @@ export default function SingleCompanyAdmin({
             })}
           </nav>
         </div>
-
         <div className="p-4 border-t border-neutral-800">
           <button
             onClick={onLogout}
@@ -1124,7 +1505,7 @@ export default function SingleCompanyAdmin({
         </div>
       </aside>
 
-      {/* MAIN VIEWPORT */}
+      {/* MAIN */}
       <div className="flex-1 flex flex-col w-full h-full overflow-hidden min-w-0">
         <header className="h-16 border-b border-neutral-800 bg-neutral-900/50 flex items-center justify-between px-4 sm:px-8 shrink-0">
           <div className="flex items-center space-x-3">
@@ -1143,8 +1524,6 @@ export default function SingleCompanyAdmin({
               </span>
             </div>
           </div>
-
-          {/* Profile dropdown */}
           <div className="relative">
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -1154,7 +1533,6 @@ export default function SingleCompanyAdmin({
                 <User className="w-5 h-5" />
               </div>
             </button>
-
             {dropdownOpen && (
               <div className="absolute right-0 mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl shadow-black/80 p-2 z-50 animate-popover">
                 <div className="px-3 py-2 border-b border-neutral-800">
@@ -1197,7 +1575,6 @@ export default function SingleCompanyAdmin({
                   <span>Add Employee</span>
                 </button>
               </div>
-
               {loading ? (
                 <p className="text-xs text-neutral-500">
                   Loading workforce records...
@@ -1215,7 +1592,9 @@ export default function SingleCompanyAdmin({
                       <thead className="bg-neutral-950/60 text-[10px] text-neutral-500 uppercase tracking-wider border-b border-neutral-800">
                         <tr>
                           <th className="p-4 font-semibold">Employee</th>
-                          <th className="p-4 font-semibold">Monthly salary</th>
+                          <th className="p-4 font-semibold">Contact</th>
+                          <th className="p-4 font-semibold">Monthly Salary</th>
+                          <th className="p-4 font-semibold">Joining Date</th>
                           <th className="p-4 font-semibold text-right">
                             Actions
                           </th>
@@ -1229,12 +1608,37 @@ export default function SingleCompanyAdmin({
                           >
                             <td className="p-4">
                               <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 font-bold text-xs shrink-0">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 font-bold text-sm shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
                                   {emp.name?.charAt(0).toUpperCase()}
                                 </div>
-                                <span className="font-semibold text-white">
-                                  {emp.name}
-                                </span>
+                                <div>
+                                  <p className="font-semibold text-white">
+                                    {emp.name}
+                                  </p>
+                                  {emp.cnic && (
+                                    <p className="text-[10px] text-neutral-500 font-mono">
+                                      CNIC: {emp.cnic}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <div className="space-y-0.5">
+                                {emp.mobile && (
+                                  <p className="text-xs text-neutral-300 font-mono flex items-center gap-1.5">
+                                    <Phone className="w-3 h-3 text-neutral-500" />
+                                    {emp.mobile}
+                                  </p>
+                                )}
+                                {emp.emergency_contact && (
+                                  <p className="text-[10px] text-neutral-500 font-mono flex items-center gap-1.5">
+                                    <span className="text-neutral-600">
+                                      Emergency:
+                                    </span>
+                                    {emp.emergency_contact}
+                                  </p>
+                                )}
                               </div>
                             </td>
                             <td className="p-4 text-emerald-400 font-semibold font-mono">
@@ -1243,8 +1647,20 @@ export default function SingleCompanyAdmin({
                                 minimumFractionDigits: 2,
                               })}
                             </td>
+                            <td className="p-4 text-xs text-neutral-400">
+                              {emp.date_of_joining
+                                ? formatDate(emp.date_of_joining)
+                                : "—"}
+                            </td>
                             <td className="p-4">
                               <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => openEmployeeProfile(emp)}
+                                  className="p-2 bg-neutral-950 hover:bg-neutral-800 text-blue-400 border border-neutral-800 rounded-xl transition-colors group/btn"
+                                  title="View Full Profile"
+                                >
+                                  <User className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                                </button>
                                 <button
                                   onClick={() => openEditEmployeeModal(emp)}
                                   className="p-2 bg-neutral-950 hover:bg-neutral-800 text-blue-400 border border-neutral-800 rounded-xl transition-colors"
@@ -1269,29 +1685,275 @@ export default function SingleCompanyAdmin({
             </div>
           )}
 
+          {/* EMPLOYEE PROFILE MODAL - MEDIUM SIZED */}
+          {profileModalOpen && selectedEmployee && isAdmin && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-black/95 via-black/90 to-black/95 backdrop-blur-xl animate-in fade-in duration-300">
+              <div className="bg-gradient-to-br from-neutral-900/98 via-neutral-900/95 to-neutral-950/98 border border-neutral-700/50 rounded-2xl p-6 sm:p-7 w-full max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden shadow-[0_0_80px_-12px_rgba(220,38,38,0.15)] shadow-2xl animate-popover relative">
+                {/* Decorative Elements - Removed left-side faded element */}
+                <div className="absolute -top-24 -right-24 w-64 h-64 bg-gradient-to-br from-red-600/15 via-red-500/8 to-transparent rounded-full blur-3xl pointer-events-none" />
+
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-neutral-700/50 pb-4 mb-5 relative">
+                  <div className="flex items-center gap-3">
+                    <div className="relative p-2.5 bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+                      <User className="w-5 h-5 text-red-400 drop-shadow-[0_0_8px_rgba(220,38,38,0.3)]" />
+                      <div className="absolute inset-0 bg-gradient-to-tr from-red-500/20 to-transparent rounded-xl animate-pulse" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white tracking-tight bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
+                        Employee Profile
+                      </h3>
+                      <p className="text-xs text-neutral-400 font-medium">
+                        Complete employee details
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeEmployeeProfile}
+                    className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800/60 hover:border hover:border-neutral-700 transition-all duration-200 cursor-pointer group"
+                  >
+                    <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
+                  </button>
+                </div>
+
+                {/* Profile Content */}
+                <div className="space-y-5">
+                  {/* Employee Header Card */}
+                  <div className="bg-gradient-to-br from-neutral-950/80 to-neutral-900/80 border border-neutral-700/30 rounded-xl p-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-red-600/40 to-red-500/20 border-2 border-red-500/30 flex items-center justify-center text-2xl font-bold text-white shadow-xl shadow-red-950/30 shrink-0">
+                        {selectedEmployee.name?.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-lg font-extrabold text-white">
+                          {selectedEmployee.name}
+                        </h4>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          <span className="text-[10px] text-neutral-400 flex items-center gap-1.5">
+                            <Briefcase className="w-3 h-3 text-red-400" />
+                            ID: #{selectedEmployee.id?.slice(0, 8)}
+                          </span>
+                          <span className="text-[10px] text-neutral-400 flex items-center gap-1.5">
+                            <Calendar className="w-3 h-3 text-blue-400" />
+                            Joined:{" "}
+                            {formatDate(selectedEmployee.date_of_joining)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5 shrink-0">
+                        <span className="text-[8px] text-neutral-400 uppercase tracking-wider block">
+                          Salary
+                        </span>
+                        <span className="text-sm font-bold text-emerald-400 font-mono">
+                          Rs.{" "}
+                          {Number(selectedEmployee.base_salary).toLocaleString(
+                            "en-PK",
+                            { minimumFractionDigits: 0 }
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Personal Information */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-1.5 border-b border-neutral-700/30">
+                      <div className="p-1 bg-red-500/20 rounded-lg">
+                        <User className="w-3.5 h-3.5 text-red-400" />
+                      </div>
+                      <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+                        Personal Information
+                      </span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Father Name
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {selectedEmployee.father_name || "Not provided"}
+                        </span>
+                      </div>
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Address
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {selectedEmployee.address || "Not provided"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Identification & Contact */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-1.5 border-b border-neutral-700/30">
+                      <div className="p-1 bg-red-500/20 rounded-lg">
+                        <CreditCard className="w-3.5 h-3.5 text-red-400" />
+                      </div>
+                      <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+                        Identification & Contact
+                      </span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          CNIC
+                        </span>
+                        <span className="text-sm font-mono font-semibold text-white">
+                          {selectedEmployee.cnic || "Not provided"}
+                        </span>
+                      </div>
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Father CNIC
+                        </span>
+                        <span className="text-sm font-mono font-semibold text-white">
+                          {selectedEmployee.father_cnic || "Not provided"}
+                        </span>
+                      </div>
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Mobile Number
+                        </span>
+                        <span className="text-sm font-mono font-semibold text-white">
+                          {selectedEmployee.mobile || "Not provided"}
+                        </span>
+                      </div>
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Emergency Contact
+                        </span>
+                        <span className="text-sm font-mono font-semibold text-white">
+                          {selectedEmployee.emergency_contact || "Not provided"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Employment Details */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-1.5 border-b border-neutral-700/30">
+                      <div className="p-1 bg-red-500/20 rounded-lg">
+                        <Briefcase className="w-3.5 h-3.5 text-red-400" />
+                      </div>
+                      <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+                        Employment Details
+                      </span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Date of Joining
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {formatDate(selectedEmployee.date_of_joining)}
+                        </span>
+                      </div>
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Reference
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {selectedEmployee.reference || "Not provided"}
+                        </span>
+                      </div>
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Starting Salary
+                        </span>
+                        <span className="text-sm font-semibold text-white font-mono">
+                          {selectedEmployee.starting_salary
+                            ? `Rs. ${Number(
+                                selectedEmployee.starting_salary
+                              ).toLocaleString("en-PK", {
+                                minimumFractionDigits: 0,
+                              })}`
+                            : "Not provided"}
+                        </span>
+                      </div>
+                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
+                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                          Current Salary
+                        </span>
+                        <span className="text-sm font-semibold text-white font-mono text-emerald-400">
+                          Rs.{" "}
+                          {Number(selectedEmployee.base_salary).toLocaleString(
+                            "en-PK",
+                            { minimumFractionDigits: 0 }
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons - Only Close */}
+                  <div className="flex gap-3 pt-3 border-t-2 border-neutral-700/30">
+                    <button
+                      type="button"
+                      onClick={closeEmployeeProfile}
+                      className="flex-1 h-11 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl text-sm font-bold transition-all duration-200 shadow-[0_4px_20px_rgba(220,38,38,0.4)] hover:shadow-[0_4px_30px_rgba(220,38,38,0.6)] cursor-pointer active:scale-[0.98]"
+                    >
+                      Close Profile
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* DAILY ATTENDANCE TAB */}
           {activeTab === "daily" && (
             <div className="space-y-6 w-full">
               <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4 w-full">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
-                  <CustomMonthPicker
-                    label="Month"
-                    value={selectedMonth}
-                    onChange={(m) => setSelectedMonth(m)}
-                  />
-                  <CustomYearPicker
-                    label="Year"
-                    value={selectedYear}
-                    onChange={(y) => setSelectedYear(y)}
-                  />
-                  <CustomDayPicker
-                    label="Day"
-                    value={selectedDay}
-                    maxDays={daysInMonth(selectedYear, selectedMonth)}
-                    onChange={(d) => setSelectedDay(d)}
-                  />
+                  {isAdmin ? (
+                    <>
+                      <CustomMonthPicker
+                        label="Month"
+                        value={selectedMonth}
+                        onChange={(m) => setSelectedMonth(m)}
+                      />
+                      <CustomYearPicker
+                        label="Year"
+                        value={selectedYear}
+                        onChange={(y) => setSelectedYear(y)}
+                      />
+                      <CustomDayPicker
+                        label="Day"
+                        value={selectedDay}
+                        maxDays={daysInMonth(selectedYear, selectedMonth)}
+                        onChange={(d) => setSelectedDay(d)}
+                      />
+                    </>
+                  ) : (
+                    <div className="col-span-3 flex items-center justify-center gap-3 py-2">
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+                        Today’s Date:
+                      </span>
+                      <span className="text-sm font-mono text-white">
+                        {currentDate.toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        })}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {isLocked && !isAdmin && (
+                <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-4 text-center text-amber-300 text-sm font-medium">
+                  <CheckCircle2 className="w-5 h-5 inline-block mr-2 text-amber-400" />
+                  Today’s attendance has already been marked. You cannot edit it
+                  again.
+                </div>
+              )}
 
               {employees.length === 0 ? (
                 <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl text-center w-full">
@@ -1301,45 +1963,76 @@ export default function SingleCompanyAdmin({
                 </div>
               ) : (
                 <div className="space-y-3 w-full">
-                  {employees.map((emp) => (
-                    <div
-                      key={emp.id}
-                      className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
-                    >
-                      <div>
-                        <span className="font-bold text-sm text-white block">
-                          {emp.name}
-                        </span>
-                        {isAdmin && (
-                          <span className="text-xs text-neutral-500 font-mono">
-                            Rs. {Number(emp.base_salary).toLocaleString()}
+                  {employees.map((emp) => {
+                    const currentStatus = dailyStatus[emp.id] || "absent";
+                    return (
+                      <div
+                        key={emp.id}
+                        className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
+                      >
+                        <div>
+                          <span className="font-bold text-sm text-white block">
+                            {emp.name}
                           </span>
-                        )}
-                      </div>
+                          {isAdmin && (
+                            <span className="text-xs text-neutral-500 font-mono">
+                              Rs. {Number(emp.base_salary).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
 
-                      <div className="grid grid-cols-2 sm:flex gap-2">
-                        {["full", "half", "holiday", "absent"].map((st) => (
-                          <button
-                            key={st}
-                            type="button"
-                            onClick={() => handleStatusChange(emp.id, st)}
-                            className={`px-3.5 py-2 rounded-xl text-xs font-bold capitalize border transition-all ${
-                              dailyAttendance[emp.id] === st
-                                ? "bg-red-600 border-red-500 text-white shadow-md"
-                                : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
-                            }`}
-                          >
-                            {st}
-                          </button>
-                        ))}
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex gap-2">
+                            {["full", "half", "holiday", "absent"].map((st) => (
+                              <button
+                                key={st}
+                                type="button"
+                                onClick={() => handleStatusChange(emp.id, st)}
+                                disabled={isLocked}
+                                className={`px-3.5 py-2 rounded-xl text-xs font-bold capitalize border transition-all ${
+                                  currentStatus === st
+                                    ? "bg-red-600 border-red-500 text-white shadow-md"
+                                    : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
+                                } ${
+                                  isLocked
+                                    ? "opacity-50 cursor-not-allowed"
+                                    : ""
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            ))}
+                          </div>
+
+                          <CustomTimePicker
+                            label="In"
+                            value={dailyCheckIn[emp.id] || ""}
+                            onChange={(val) =>
+                              setDailyCheckIn((prev) => ({
+                                ...prev,
+                                [emp.id]: val,
+                              }))
+                            }
+                            placeholder="Check-In Time"
+                            className="w-44"
+                            disabled={isLocked}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <button
                     onClick={saveDailyAttendance}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white shadow-lg shadow-emerald-950 transition-colors mt-4 active:scale-[0.99]"
+                    disabled={isLocked}
+                    className={`w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white shadow-lg transition-colors mt-4 active:scale-[0.99] ${
+                      isLocked
+                        ? "bg-neutral-700 cursor-not-allowed shadow-none"
+                        : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-950"
+                    }`}
                   >
-                    Save daily attendance
+                    {isLocked
+                      ? "Attendance Already Saved"
+                      : "Save Daily Attendance"}
                   </button>
                 </div>
               )}
@@ -1367,7 +2060,6 @@ export default function SingleCompanyAdmin({
                         />
                       </div>
                     </div>
-
                     <div>
                       <CustomDatePicker
                         label="Filter By Date"
@@ -1377,7 +2069,6 @@ export default function SingleCompanyAdmin({
                       />
                     </div>
                   </div>
-
                   <div className="w-full sm:w-auto">
                     <button
                       type="button"
@@ -1385,7 +2076,7 @@ export default function SingleCompanyAdmin({
                       className="w-full sm:w-auto h-11 bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-white font-bold px-4 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shrink-0 cursor-pointer active:scale-[0.99]"
                     >
                       <FileText className="w-4 h-4 text-red-500" />
-                      <span>Daily Attendance PDF</span>
+                      <span>Print Report</span>
                     </button>
                   </div>
                 </div>
@@ -1410,6 +2101,7 @@ export default function SingleCompanyAdmin({
                           <th className="p-4">Date</th>
                           <th className="p-4">Employee Name</th>
                           <th className="p-4">Status</th>
+                          <th className="p-4">Check‑in Time</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-neutral-800">
@@ -1442,6 +2134,9 @@ export default function SingleCompanyAdmin({
                                 >
                                   {rec.status}
                                 </span>
+                              </td>
+                              <td className="p-4 text-white font-mono">
+                                {rec.check_in_time || "—"}
                               </td>
                             </tr>
                           );
@@ -1590,7 +2285,7 @@ export default function SingleCompanyAdmin({
             </div>
           )}
 
-          {/* 3. SALARY REPORTS TAB — PERFECT ALIGNMENT & STRUCTURE */}
+          {/* SALARY REPORTS TAB */}
           {activeTab === "reports" && isAdmin && (
             <div className="space-y-6 w-full">
               <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl grid grid-cols-1 sm:grid-cols-3 gap-4 items-end w-full">
@@ -1719,7 +2414,7 @@ export default function SingleCompanyAdmin({
             </div>
           )}
 
-          {/* 4. ANALYTICS TAB — WORKING INTERACTIVE GRAPH */}
+          {/* ANALYTICS TAB */}
           {activeTab === "analytics" && isAdmin && (
             <div className="space-y-6 w-full">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
@@ -1739,7 +2434,6 @@ export default function SingleCompanyAdmin({
                     active employees
                   </span>
                 </div>
-
                 <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl hover:border-neutral-700 transition-colors">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
@@ -1759,7 +2453,6 @@ export default function SingleCompanyAdmin({
                     per employee / month
                   </span>
                 </div>
-
                 <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl hover:border-neutral-700 transition-colors">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
@@ -1776,7 +2469,6 @@ export default function SingleCompanyAdmin({
                     combined base salaries
                   </span>
                 </div>
-
                 <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl hover:border-neutral-700 transition-colors">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
@@ -1797,7 +2489,6 @@ export default function SingleCompanyAdmin({
                 </div>
               </div>
 
-              {/* DYNAMIC SVG ATTENDANCE BREAKDOWN GRAPH */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full">
                 <div className="lg:col-span-2 bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4">
                   <div className="flex items-center justify-between">
@@ -1810,9 +2501,7 @@ export default function SingleCompanyAdmin({
                       {currentDate.getFullYear()}
                     </span>
                   </div>
-
                   <div className="h-48 w-full flex items-end justify-around pt-6 pb-2 px-4 bg-neutral-950/60 rounded-xl border border-neutral-800">
-                    {/* Full Day Bar */}
                     <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
                       <span className="text-xs font-bold text-emerald-400">
                         {presentFullToday}
@@ -1820,11 +2509,10 @@ export default function SingleCompanyAdmin({
                       <div
                         className="w-full bg-emerald-500 rounded-t-lg transition-all duration-500"
                         style={{
-                          height: `${
+                          height:
                             totalToday > 0
                               ? (presentFullToday / totalToday) * 100
-                              : 0
-                          }%`,
+                              : 0,
                           minHeight: presentFullToday > 0 ? "12px" : "4px",
                         }}
                       />
@@ -1832,8 +2520,6 @@ export default function SingleCompanyAdmin({
                         Full
                       </span>
                     </div>
-
-                    {/* Half Day Bar */}
                     <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
                       <span className="text-xs font-bold text-yellow-400">
                         {presentHalfToday}
@@ -1841,11 +2527,10 @@ export default function SingleCompanyAdmin({
                       <div
                         className="w-full bg-yellow-500 rounded-t-lg transition-all duration-500"
                         style={{
-                          height: `${
+                          height:
                             totalToday > 0
                               ? (presentHalfToday / totalToday) * 100
-                              : 0
-                          }%`,
+                              : 0,
                           minHeight: presentHalfToday > 0 ? "12px" : "4px",
                         }}
                       />
@@ -1853,8 +2538,6 @@ export default function SingleCompanyAdmin({
                         Half
                       </span>
                     </div>
-
-                    {/* Holiday Bar */}
                     <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
                       <span className="text-xs font-bold text-blue-400">
                         {holidayToday}
@@ -1862,11 +2545,10 @@ export default function SingleCompanyAdmin({
                       <div
                         className="w-full bg-blue-500 rounded-t-lg transition-all duration-500"
                         style={{
-                          height: `${
+                          height:
                             totalToday > 0
                               ? (holidayToday / totalToday) * 100
-                              : 0
-                          }%`,
+                              : 0,
                           minHeight: holidayToday > 0 ? "12px" : "4px",
                         }}
                       />
@@ -1874,8 +2556,6 @@ export default function SingleCompanyAdmin({
                         Holiday
                       </span>
                     </div>
-
-                    {/* Absent Bar */}
                     <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
                       <span className="text-xs font-bold text-red-400">
                         {absentToday}
@@ -1883,11 +2563,10 @@ export default function SingleCompanyAdmin({
                       <div
                         className="w-full bg-red-500 rounded-t-lg transition-all duration-500"
                         style={{
-                          height: `${
+                          height:
                             totalToday > 0
                               ? (absentToday / totalToday) * 100
-                              : 0
-                          }%`,
+                              : 0,
                           minHeight: absentToday > 0 ? "12px" : "4px",
                         }}
                       />
@@ -1897,13 +2576,11 @@ export default function SingleCompanyAdmin({
                     </div>
                   </div>
                 </div>
-
                 <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4">
                   <h4 className="text-sm font-bold text-white flex items-center gap-2">
                     <PieChart className="w-4 h-4 text-emerald-500" />
                     <span>Ratio Breakdown</span>
                   </h4>
-
                   <div className="space-y-3 pt-2">
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs font-semibold">
@@ -1917,7 +2594,6 @@ export default function SingleCompanyAdmin({
                         />
                       </div>
                     </div>
-
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs font-semibold">
                         <span className="text-red-400">Absent Rate</span>
@@ -1932,16 +2608,14 @@ export default function SingleCompanyAdmin({
                         <div
                           className="h-full bg-red-500 transition-all duration-500"
                           style={{
-                            width: `${
+                            width:
                               totalToday > 0
                                 ? (absentToday / totalToday) * 100
-                                : 0
-                            }%`,
+                                : 0,
                           }}
                         />
                       </div>
                     </div>
-
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs font-semibold">
                         <span className="text-neutral-400">Unmarked</span>
@@ -1956,11 +2630,10 @@ export default function SingleCompanyAdmin({
                         <div
                           className="h-full bg-neutral-700 transition-all duration-500"
                           style={{
-                            width: `${
+                            width:
                               totalToday > 0
                                 ? (unmarkedToday / totalToday) * 100
-                                : 0
-                            }%`,
+                                : 0,
                           }}
                         />
                       </div>
@@ -1971,7 +2644,7 @@ export default function SingleCompanyAdmin({
             </div>
           )}
 
-          {/* 5. EXTRA CALCULATOR TAB — LOGICAL & COMPLETE */}
+          {/* CALCULATOR TAB */}
           {activeTab === "calculator" && isAdmin && (
             <div className="w-full bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-5">
               <div className="border-b border-neutral-800 pb-3">
@@ -1984,7 +2657,6 @@ export default function SingleCompanyAdmin({
                   deductions logically.
                 </p>
               </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                 <CustomMonthPicker
                   label="Month"
@@ -2010,7 +2682,6 @@ export default function SingleCompanyAdmin({
                   />
                 </div>
               </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                 <div>
                   <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
@@ -2052,7 +2723,6 @@ export default function SingleCompanyAdmin({
                   />
                 </div>
               </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <div>
                   <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
@@ -2067,7 +2737,6 @@ export default function SingleCompanyAdmin({
                     className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
                   />
                 </div>
-
                 <div>
                   <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
                     Advance / Deductions (Rs.)
@@ -2082,7 +2751,6 @@ export default function SingleCompanyAdmin({
                   />
                 </div>
               </div>
-
               <button
                 type="button"
                 onClick={handleCalculateExtra}
@@ -2091,13 +2759,11 @@ export default function SingleCompanyAdmin({
                 <Calculator className="w-4 h-4" />
                 <span>Calculate Payroll Breakdown</span>
               </button>
-
               {calcResult && (
                 <div className="bg-neutral-950 p-5 rounded-xl border border-neutral-800 space-y-3 text-xs text-neutral-300 animate-in fade-in">
                   <h4 className="font-bold text-sm text-white border-b border-neutral-800 pb-2">
                     Calculation Results ({months[calcMonth]} {calcYear})
                   </h4>
-
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <span className="text-neutral-500 block">
@@ -2124,7 +2790,6 @@ export default function SingleCompanyAdmin({
                       </span>
                     </div>
                   </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-neutral-800/80 pt-3">
                     <div>
                       <span className="text-neutral-500 block">
@@ -2152,7 +2817,6 @@ export default function SingleCompanyAdmin({
                       </span>
                     </div>
                   </div>
-
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-neutral-900 p-4 rounded-xl border border-neutral-800 gap-2 pt-2">
                     <div>
                       <span className="text-neutral-400 block text-[10px] uppercase font-bold">
