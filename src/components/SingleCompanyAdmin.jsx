@@ -1141,19 +1141,19 @@ export default function SingleCompanyAdmin({
             <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-gradient-to-tr from-blue-600/10 via-purple-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
 
             {/* Header with Enhanced Design */}
-            <div className="flex items-center justify-between border-b border-neutral-700/50 pb-6 mb-6 relative">
-              <div className="flex items-center gap-4">
-                <div className="relative p-3 bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
-                  <UserPlus className="w-6 h-6 text-red-400 drop-shadow-[0_0_8px_rgba(220,38,38,0.3)]" />
+            <div className="flex items-start sm:items-center justify-between gap-3 border-b border-neutral-700/50 pb-6 mb-6 relative">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <div className="relative p-2.5 sm:p-3 bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] shrink-0">
+                  <UserPlus className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 drop-shadow-[0_0_8px_rgba(220,38,38,0.3)]" />
                   <div className="absolute inset-0 bg-gradient-to-tr from-red-500/20 to-transparent rounded-2xl animate-pulse" />
                 </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-white tracking-tight bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
+                <div className="min-w-0">
+                  <h3 className="text-lg sm:text-2xl font-bold text-white tracking-tight bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
                     {editingEmpId
                       ? "Update Employee Profile"
                       : "Register New Employee"}
                   </h3>
-                  <p className="text-sm text-neutral-400 font-medium">
+                  <p className="text-xs sm:text-sm text-neutral-400 font-medium">
                     {editingEmpId
                       ? "Modify employee details and salary information"
                       : "Add a new staff member to the company"}
@@ -1163,7 +1163,7 @@ export default function SingleCompanyAdmin({
               <button
                 type="button"
                 onClick={closeEmployeeModal}
-                className="p-2.5 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800/60 hover:border hover:border-neutral-700 transition-all duration-200 cursor-pointer group"
+                className="p-2 sm:p-2.5 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800/60 hover:border hover:border-neutral-700 transition-all duration-200 cursor-pointer group shrink-0"
               >
                 <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
               </button>
@@ -1687,100 +1687,97 @@ export default function SingleCompanyAdmin({
 
           {/* EMPLOYEE PROFILE MODAL - MEDIUM SIZED */}
           {profileModalOpen && selectedEmployee && isAdmin && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-black/95 via-black/90 to-black/95 backdrop-blur-xl animate-in fade-in duration-300">
-              <div className="bg-gradient-to-br from-neutral-900/98 via-neutral-900/95 to-neutral-950/98 border border-neutral-700/50 rounded-2xl p-6 sm:p-7 w-full max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden shadow-[0_0_80px_-12px_rgba(220,38,38,0.15)] shadow-2xl animate-popover relative">
-                {/* Decorative Elements - Removed left-side faded element */}
-                <div className="absolute -top-24 -right-24 w-64 h-64 bg-gradient-to-br from-red-600/15 via-red-500/8 to-transparent rounded-full blur-3xl pointer-events-none" />
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+              <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                {/* Decorative Glow */}
+                <div className="absolute -top-16 -right-16 w-48 h-48 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
 
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-neutral-700/50 pb-4 mb-5 relative">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800 bg-neutral-900/50 relative z-10 shrink-0">
                   <div className="flex items-center gap-3">
-                    <div className="relative p-2.5 bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
-                      <User className="w-5 h-5 text-red-400 drop-shadow-[0_0_8px_rgba(220,38,38,0.3)]" />
-                      <div className="absolute inset-0 bg-gradient-to-tr from-red-500/20 to-transparent rounded-xl animate-pulse" />
+                    <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
+                      <User className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white tracking-tight bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
+                      <h3 className="text-lg font-bold text-white tracking-tight">
                         Employee Profile
                       </h3>
-                      <p className="text-xs text-neutral-400 font-medium">
-                        Complete employee details
+                      <p className="text-xs text-neutral-400">
+                        Complete details and contact information
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={closeEmployeeProfile}
-                    className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800/60 hover:border hover:border-neutral-700 transition-all duration-200 cursor-pointer group"
+                    className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
                   >
-                    <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                {/* Profile Content */}
-                <div className="space-y-5">
-                  {/* Employee Header Card */}
-                  <div className="bg-gradient-to-br from-neutral-950/80 to-neutral-900/80 border border-neutral-700/30 rounded-xl p-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-red-600/40 to-red-500/20 border-2 border-red-500/30 flex items-center justify-center text-2xl font-bold text-white shadow-xl shadow-red-950/30 shrink-0">
+                {/* Scrollable Modal Content */}
+                <div className="p-6 overflow-y-auto space-y-6 flex-1 scrollbar-thin scrollbar-thumb-neutral-800">
+                  {/* Employee Banner Card */}
+                  <div className="bg-gradient-to-r from-neutral-800/60 to-neutral-800/30 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className="w-14 h-14 rounded-xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-xl font-bold text-red-400 shrink-0">
                         {selectedEmployee.name?.charAt(0).toUpperCase()}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-lg font-extrabold text-white">
+                      <div className="min-w-0">
+                        <h4 className="text-base font-bold text-white truncate">
                           {selectedEmployee.name}
                         </h4>
-                        <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          <span className="text-[10px] text-neutral-400 flex items-center gap-1.5">
-                            <Briefcase className="w-3 h-3 text-red-400" />
+                        <div className="flex items-center gap-3 mt-1 text-xs text-neutral-400">
+                          {/* <span className="flex items-center gap-1">
+                            <Briefcase className="w-3.5 h-3.5 text-neutral-500" />
                             ID: #{selectedEmployee.id?.slice(0, 8)}
-                          </span>
-                          <span className="text-[10px] text-neutral-400 flex items-center gap-1.5">
-                            <Calendar className="w-3 h-3 text-blue-400" />
+                          </span> */}
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-neutral-500" />
                             Joined:{" "}
                             {formatDate(selectedEmployee.date_of_joining)}
                           </span>
                         </div>
                       </div>
-                      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-1.5 shrink-0">
-                        <span className="text-[8px] text-neutral-400 uppercase tracking-wider block">
-                          Salary
-                        </span>
-                        <span className="text-sm font-bold text-emerald-400 font-mono">
-                          Rs.{" "}
-                          {Number(selectedEmployee.base_salary).toLocaleString(
-                            "en-PK",
-                            { minimumFractionDigits: 0 }
-                          )}
-                        </span>
-                      </div>
+                    </div>
+
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-right shrink-0 self-stretch sm:self-auto flex sm:block items-center justify-between">
+                      <span className="text-[10px] font-semibold text-emerald-400/80 uppercase tracking-wider block">
+                        Current Salary
+                      </span>
+                      <span className="text-base font-bold text-emerald-400 font-mono">
+                        Rs.{" "}
+                        {Number(selectedEmployee.base_salary).toLocaleString(
+                          "en-PK",
+                          { minimumFractionDigits: 0 }
+                        )}
+                      </span>
                     </div>
                   </div>
 
                   {/* Personal Information */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 pb-1.5 border-b border-neutral-700/30">
-                      <div className="p-1 bg-red-500/20 rounded-lg">
-                        <User className="w-3.5 h-3.5 text-red-400" />
-                      </div>
-                      <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-red-400" />
+                      <h5 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
                         Personal Information
-                      </span>
-                      <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                      </h5>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           Father Name
                         </span>
-                        <span className="text-sm font-semibold text-white">
+                        <span className="text-sm font-medium text-neutral-100">
                           {selectedEmployee.father_name || "Not provided"}
                         </span>
                       </div>
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           Address
                         </span>
-                        <span className="text-sm font-semibold text-white">
+                        <span className="text-sm font-medium text-neutral-100 block break-words whitespace-normal leading-relaxed">
                           {selectedEmployee.address || "Not provided"}
                         </span>
                       </div>
@@ -1789,45 +1786,42 @@ export default function SingleCompanyAdmin({
 
                   {/* Identification & Contact */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 pb-1.5 border-b border-neutral-700/30">
-                      <div className="p-1 bg-red-500/20 rounded-lg">
-                        <CreditCard className="w-3.5 h-3.5 text-red-400" />
-                      </div>
-                      <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-red-400" />
+                      <h5 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
                         Identification & Contact
-                      </span>
-                      <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                      </h5>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           CNIC
                         </span>
-                        <span className="text-sm font-mono font-semibold text-white">
+                        <span className="text-sm font-mono font-medium text-neutral-100">
                           {selectedEmployee.cnic || "Not provided"}
                         </span>
                       </div>
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           Father CNIC
                         </span>
-                        <span className="text-sm font-mono font-semibold text-white">
+                        <span className="text-sm font-mono font-medium text-neutral-100">
                           {selectedEmployee.father_cnic || "Not provided"}
                         </span>
                       </div>
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           Mobile Number
                         </span>
-                        <span className="text-sm font-mono font-semibold text-white">
+                        <span className="text-sm font-mono font-medium text-neutral-100">
                           {selectedEmployee.mobile || "Not provided"}
                         </span>
                       </div>
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           Emergency Contact
                         </span>
-                        <span className="text-sm font-mono font-semibold text-white">
+                        <span className="text-sm font-mono font-medium text-neutral-100">
                           {selectedEmployee.emergency_contact || "Not provided"}
                         </span>
                       </div>
@@ -1836,37 +1830,34 @@ export default function SingleCompanyAdmin({
 
                   {/* Employment Details */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 pb-1.5 border-b border-neutral-700/30">
-                      <div className="p-1 bg-red-500/20 rounded-lg">
-                        <Briefcase className="w-3.5 h-3.5 text-red-400" />
-                      </div>
-                      <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-widest">
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="w-4 h-4 text-red-400" />
+                      <h5 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
                         Employment Details
-                      </span>
-                      <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
+                      </h5>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           Date of Joining
                         </span>
-                        <span className="text-sm font-semibold text-white">
+                        <span className="text-sm font-medium text-neutral-100">
                           {formatDate(selectedEmployee.date_of_joining)}
                         </span>
                       </div>
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           Reference
                         </span>
-                        <span className="text-sm font-semibold text-white">
+                        <span className="text-sm font-medium text-neutral-100">
                           {selectedEmployee.reference || "Not provided"}
                         </span>
                       </div>
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
                           Starting Salary
                         </span>
-                        <span className="text-sm font-semibold text-white font-mono">
+                        <span className="text-sm font-mono font-medium text-neutral-100">
                           {selectedEmployee.starting_salary
                             ? `Rs. ${Number(
                                 selectedEmployee.starting_salary
@@ -1876,11 +1867,11 @@ export default function SingleCompanyAdmin({
                             : "Not provided"}
                         </span>
                       </div>
-                      <div className="bg-neutral-950/60 border border-neutral-800/50 rounded-lg p-3">
-                        <span className="text-[9px] text-neutral-500 uppercase tracking-wider block">
-                          Current Salary
+                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
+                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
+                          Base Salary
                         </span>
-                        <span className="text-sm font-semibold text-white font-mono text-emerald-400">
+                        <span className="text-sm font-mono font-medium text-emerald-400">
                           Rs.{" "}
                           {Number(selectedEmployee.base_salary).toLocaleString(
                             "en-PK",
@@ -1890,17 +1881,17 @@ export default function SingleCompanyAdmin({
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  {/* Action Buttons - Only Close */}
-                  <div className="flex gap-3 pt-3 border-t-2 border-neutral-700/30">
-                    <button
-                      type="button"
-                      onClick={closeEmployeeProfile}
-                      className="flex-1 h-11 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl text-sm font-bold transition-all duration-200 shadow-[0_4px_20px_rgba(220,38,38,0.4)] hover:shadow-[0_4px_30px_rgba(220,38,38,0.6)] cursor-pointer active:scale-[0.98]"
-                    >
-                      Close Profile
-                    </button>
-                  </div>
+                {/* Footer */}
+                <div className="p-4 border-t border-neutral-800 bg-neutral-900/50 shrink-0">
+                  <button
+                    type="button"
+                    onClick={closeEmployeeProfile}
+                    className="w-full h-10 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </div>
@@ -2174,10 +2165,10 @@ export default function SingleCompanyAdmin({
                   {employees.map((emp) => (
                     <div
                       key={emp.id}
-                      className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex items-center justify-between hover:border-neutral-700 transition-colors"
+                      className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
                     >
-                      <div>
-                        <span className="font-bold text-sm text-white block">
+                      <div className="min-w-0">
+                        <span className="font-bold text-sm text-white block truncate">
                           {emp.name}
                         </span>
                         <span className="text-xs text-neutral-500 font-mono">
@@ -2193,7 +2184,7 @@ export default function SingleCompanyAdmin({
                           setBulkDays({ ...bulkDays, [emp.id]: e.target.value })
                         }
                         placeholder="Working days"
-                        className={`${inputBase} p-2.5 text-center w-36`}
+                        className={`${inputBase} p-2.5 text-center w-full sm:w-36 shrink-0`}
                       />
                     </div>
                   ))}
@@ -2219,7 +2210,7 @@ export default function SingleCompanyAdmin({
                   id="bulkPrintArea"
                   className="space-y-4 border-t border-neutral-800 pt-6 w-full"
                 >
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                     <h3 className="font-bold text-base text-white">
                       Bulk Payroll Summary
                     </h3>
@@ -2230,7 +2221,7 @@ export default function SingleCompanyAdmin({
                           "bulkPrintArea"
                         )
                       }
-                      className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center space-x-2 transition-colors"
+                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center space-x-2 transition-colors"
                     >
                       <Printer className="w-4 h-4" />
                       <span>Print report</span>
@@ -2311,9 +2302,9 @@ export default function SingleCompanyAdmin({
 
               {monthlyReports.length > 0 && (
                 <div id="monthlyPrintArea" className="space-y-6 w-full">
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                     <div>
-                      <h3 className="font-bold text-lg text-white">
+                      <h3 className="font-bold text-base sm:text-lg text-white">
                         {months[selectedMonth]} {selectedYear} Payroll Report
                       </h3>
                       <p className="text-xs text-neutral-500">{companyName}</p>
@@ -2325,7 +2316,7 @@ export default function SingleCompanyAdmin({
                           "monthlyPrintArea"
                         )
                       }
-                      className="bg-blue-600 hover:bg-blue-700 px-4 py-2.5 rounded-xl text-xs font-bold text-white flex items-center space-x-2 transition-colors"
+                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 px-4 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center space-x-2 transition-colors"
                     >
                       <Printer className="w-4 h-4" />
                       <span>Print / Save PDF</span>

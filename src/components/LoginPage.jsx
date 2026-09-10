@@ -125,17 +125,19 @@ export default function LoginPage({ onLoginSuccess }) {
   }
 
   return (
-    <div className="min-h-screen w-full bg-neutral-950 flex">
+    <div className="min-h-screen w-full bg-neutral-950 flex flex-col lg:flex-row">
       {/* LEFT: Login Form – modern, clean, no glass */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 relative">
-        <div className="w-full max-w-md space-y-6">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-6 relative overflow-y-auto">
+        <div className="w-full max-w-md space-y-5 sm:space-y-6 py-6">
           {/* Brand */}
-          <div className="flex items-center space-x-3 my-[40px]">
-            <div className="p-2.5 bg-red-600/10 rounded-xl text-red-500">
+          <div className="flex items-center space-x-3 my-2 sm:my-6">
+            <div className="p-2.5 bg-red-600/10 rounded-xl text-red-500 shrink-0">
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">HONDA Portal</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-white">
+                HONDA Portal
+              </h1>
               <p className="text-xs text-neutral-400">Secure sign‑in</p>
             </div>
           </div>
@@ -265,7 +267,7 @@ export default function LoginPage({ onLoginSuccess }) {
           </div>
 
           <div>
-            <h2 className="text-4xl font-black text-white tracking-tight">
+            <h2 className="text-3xl font-black text-white tracking-tight">
               Attendance &amp; Payroll
             </h2>
             <p className="text-sm text-neutral-400 mt-2 leading-relaxed">
