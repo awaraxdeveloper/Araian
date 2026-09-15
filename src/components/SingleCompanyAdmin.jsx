@@ -96,6 +96,7 @@ export default function SingleCompanyAdmin({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [historyDateFilter, setHistoryDateFilter] = useState("");
+  const [expandedHistoryEmp, setExpandedHistoryEmp] = useState(null);
 
   // Analytics
   const [todayAttendance, setTodayAttendance] = useState([]);
@@ -103,6 +104,9 @@ export default function SingleCompanyAdmin({
 
   // Manager lock state
   const [isLocked, setIsLocked] = useState(false);
+
+  // Admin toggle: allow managers to pick any date/month/year
+  const [managersCanPickDates, setManagersCanPickDates] = useState(false);
 
   // Extra Calculator
   const [calcMonth, setCalcMonth] = useState(currentDate.getMonth());
@@ -208,6 +212,26 @@ export default function SingleCompanyAdmin({
     });
   };
 
+  const toggleManagersCanPickDates = async () => {
+    if (!isAdmin) return;
+    const next = !managersCanPickDates;
+    setManagersCanPickDates(next); // optimistic
+    const { error } = await supabase
+      .from("companies")
+      .update({ managers_can_pick_dates: next })
+      .eq("id", companyId);
+    if (error) {
+      setManagersCanPickDates(!next); // revert
+      triggerToast(`Failed to update setting: ${error.message}`, "error");
+    } else {
+      triggerToast(
+        next
+          ? "Managers can now pick any date for attendance."
+          : "Managers restricted to today only."
+      );
+    }
+  };
+
   // 1. DATA ISOLATION RESET & REALTIME
   useEffect(() => {
     if (!companyId) return;
@@ -220,6 +244,16 @@ export default function SingleCompanyAdmin({
     setHistoryRecords([]);
     setTodayAttendance([]);
     setIsLocked(false);
+
+    // Load company settings (manager date-picking permission)
+    supabase
+      .from("companies")
+      .select("managers_can_pick_dates")
+      .eq("id", companyId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setManagersCanPickDates(!!data.managers_can_pick_dates);
+      });
 
     fetchEmployees();
 
@@ -258,6 +292,20 @@ export default function SingleCompanyAdmin({
           filter: `company_id=eq.${companyId}`,
         },
         () => loadBulkAttendance()
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "companies",
+          filter: `id=eq.${companyId}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setManagersCanPickDates(!!payload.new.managers_can_pick_dates);
+          }
+        }
       )
       .subscribe();
 
@@ -476,6 +524,11 @@ export default function SingleCompanyAdmin({
     if (activeTab === "history") fetchAttendanceHistory();
   }, [activeTab, employees]);
 
+  // Collapse any expanded row when filters change
+  useEffect(() => {
+    setExpandedHistoryEmp(null);
+  }, [historySearch, historyDateFilter]);
+
   // Daily Attendance
   const loadDailyAttendance = async () => {
     if (!employees || employees.length === 0) {
@@ -515,26 +568,29 @@ export default function SingleCompanyAdmin({
       setDailyCheckIn(checkInMap);
 
       // Check lock for manager
-      if (!isAdmin) {
-        const todayStr = makeDateStr(
-          currentDate.getFullYear(),
-          currentDate.getMonth(),
-          currentDate.getDate()
-        );
-        const { data: lockData, error: lockError } = await supabase
-          .from("manager_daily_locks")
-          .select("id")
-          .eq("user_id", currentUser.id)
-          .eq("company_id", companyId)
-          .eq("date", todayStr)
-          .maybeSingle();
+      // if (!isAdmin) {
+      //   const todayStr = makeDateStr(
+      //     currentDate.getFullYear(),
+      //     currentDate.getMonth(),
+      //     currentDate.getDate()
+      //   );
+      //   const { data: lockData, error: lockError } = await supabase
+      //     .from("manager_daily_locks")
+      //     .select("id")
+      //     .eq("user_id", currentUser.id)
+      //     .eq("company_id", companyId)
+      //     .eq("date", todayStr)
+      //     .maybeSingle();
 
-        if (lockError) {
-          triggerToast("Failed to check lock status", "error");
-        } else {
-          setIsLocked(!!lockData);
-        }
-      }
+      //   if (lockError) {
+      //     triggerToast("Failed to check lock status", "error");
+      //   } else {
+      //     setIsLocked(!!lockData);
+      //   }
+      // }
+
+      // Managers are no longer locked after saving — they can re-edit today.
+      setIsLocked(false);
     } catch (err) {
       triggerToast(`Failed to load attendance: ${err.message}`, "error");
     }
@@ -560,7 +616,7 @@ export default function SingleCompanyAdmin({
           currentDate.getDate()
         );
 
-    if (!isAdmin) {
+    if (!isAdmin && !managersCanPickDates) {
       const todayStr = makeDateStr(
         currentDate.getFullYear(),
         currentDate.getMonth(),
@@ -570,13 +626,14 @@ export default function SingleCompanyAdmin({
         triggerToast("Managers can only mark attendance for today.", "error");
         return;
       }
-      if (isLocked) {
-        triggerToast(
-          "Today's attendance has already been saved. You cannot edit again.",
-          "error"
-        );
-        return;
-      }
+
+      // if (isLocked) {
+      //   triggerToast(
+      //     "Today's attendance has already been saved. You cannot edit again.",
+      //     "error"
+      //   );
+      //   return;
+      // }
     }
 
     try {
@@ -812,7 +869,11 @@ export default function SingleCompanyAdmin({
       };
     });
 
-    setMonthlyReports(report);
+    // Sort highest base salary first
+    const sorted = [...report].sort(
+      (a, b) => Number(b.base_salary) - Number(a.base_salary)
+    );
+    setMonthlyReports(sorted);
   };
 
   // Extra Calculator
@@ -1035,6 +1096,30 @@ export default function SingleCompanyAdmin({
     const dateMatch = historyDateFilter ? rec.date === historyDateFilter : true;
     return empNameMatch && dateMatch;
   });
+
+  // Group filtered records by employee (accordion view).
+  // Built from filteredHistory so search + date filter keep working exactly
+  // as before, and the print report (which still uses filteredHistory) is
+  // unaffected.
+  const groupedHistory = (() => {
+    const map = {};
+    filteredHistory.forEach((rec) => {
+      if (!map[rec.employee_id]) map[rec.employee_id] = [];
+      map[rec.employee_id].push(rec);
+    });
+    return Object.entries(map)
+      .map(([empId, records]) => {
+        const emp = employees.find((e) => e.id === empId);
+        return {
+          empId,
+          emp,
+          records: [...records].sort((a, b) =>
+            a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+          ),
+        };
+      })
+      .sort((a, b) => (a.emp?.name || "").localeCompare(b.emp?.name || ""));
+  })();
 
   const totalBudget = employees.reduce(
     (acc, e) => acc + Number(e.base_salary || 0),
@@ -1901,8 +1986,49 @@ export default function SingleCompanyAdmin({
           {activeTab === "daily" && (
             <div className="space-y-6 w-full">
               <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4 w-full">
+                {/* Admin-only toggle to grant managers date-picking */}
+                {isAdmin && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-800">
+                    <div>
+                      <p className="text-xs font-bold text-white uppercase tracking-wider">
+                        Manager Attendance Access
+                      </p>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        When ON, managers can mark/edit attendance for any date,
+                        month, or year.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={toggleManagersCanPickDates}
+                      className={`relative shrink-0 w-14 h-8 rounded-full transition-colors duration-200 cursor-pointer ${
+                        managersCanPickDates
+                          ? "bg-emerald-600"
+                          : "bg-neutral-700"
+                      }`}
+                      aria-pressed={managersCanPickDates}
+                      title={
+                        managersCanPickDates
+                          ? "Managers CAN pick dates"
+                          : "Managers limited to today"
+                      }
+                    >
+                      <span
+                        className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-200 ${
+                          managersCanPickDates
+                            ? "translate-x-6"
+                            : "translate-x-0"
+                        }`}
+                      />
+                      <span className="sr-only">
+                        {managersCanPickDates ? "ON" : "OFF"}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
-                  {isAdmin ? (
+                  {isAdmin || managersCanPickDates ? (
                     <>
                       <CustomMonthPicker
                         label="Month"
@@ -2084,57 +2210,99 @@ export default function SingleCompanyAdmin({
                   </p>
                 </div>
               ) : (
-                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden w-full">
-                  <div className="overflow-x-auto w-full">
-                    <table className="w-full text-left text-xs text-neutral-300">
-                      <thead className="bg-neutral-950 uppercase text-[10px] text-neutral-500 tracking-wider border-b border-neutral-800">
-                        <tr>
-                          <th className="p-4">Date</th>
-                          <th className="p-4">Employee Name</th>
-                          <th className="p-4">Status</th>
-                          <th className="p-4">Check‑in Time</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-neutral-800">
-                        {filteredHistory.map((rec) => {
-                          const emp = employees.find(
-                            (e) => e.id === rec.employee_id
-                          );
-                          return (
-                            <tr
-                              key={rec.id}
-                              className="hover:bg-neutral-800/50 transition-colors"
-                            >
-                              <td className="p-4 font-mono text-white">
-                                {rec.date}
-                              </td>
-                              <td className="p-4 font-bold text-white">
-                                {emp ? emp.name : "Unknown"}
-                              </td>
-                              <td className="p-4">
-                                <span
-                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                                    rec.status === "full"
-                                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                      : rec.status === "half"
-                                      ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-                                      : rec.status === "holiday"
-                                      ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                                      : "bg-red-500/10 text-red-400 border border-red-500/20"
-                                  }`}
-                                >
-                                  {rec.status}
-                                </span>
-                              </td>
-                              <td className="p-4 text-white font-mono">
-                                {rec.check_in_time || "—"}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                <div className="space-y-3 w-full">
+                  {groupedHistory.map(({ empId, emp, records }) => {
+                    const isOpen = expandedHistoryEmp === empId;
+                    const empName = emp ? emp.name : "Unknown Employee";
+                    const initial = empName.charAt(0).toUpperCase();
+                    return (
+                      <div
+                        key={empId}
+                        className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden w-full hover:border-neutral-700 transition-colors"
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedHistoryEmp(isOpen ? null : empId)
+                          }
+                          className="w-full flex items-center justify-between gap-3 p-4 hover:bg-neutral-800/40 transition-colors text-left cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <ChevronDown
+                              className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform duration-200 ${
+                                isOpen ? "rotate-0" : "-rotate-90"
+                              }`}
+                            />
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 font-bold text-sm shrink-0">
+                              {initial}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-sm text-white truncate">
+                                {empName}
+                              </p>
+                              <p className="text-[10px] text-neutral-500 font-mono truncate">
+                                {emp?.cnic
+                                  ? `CNIC: ${emp.cnic}`
+                                  : emp?.mobile
+                                  ? emp.mobile
+                                  : "—"}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-neutral-950 border border-neutral-800 text-neutral-300">
+                            {records.length}{" "}
+                            {records.length === 1 ? "record" : "records"}
+                          </span>
+                        </button>
+
+                        {isOpen && (
+                          <div className="border-t border-neutral-800 bg-neutral-950/40">
+                            <div className="overflow-x-auto w-full">
+                              <table className="w-full text-left text-xs text-neutral-300">
+                                <thead className="bg-neutral-950/80 uppercase text-[10px] text-neutral-500 tracking-wider border-b border-neutral-800">
+                                  <tr>
+                                    <th className="p-3">Date</th>
+                                    <th className="p-3">Status</th>
+                                    <th className="p-3">Check‑in Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-neutral-800">
+                                  {records.map((rec) => (
+                                    <tr
+                                      key={rec.id}
+                                      className="hover:bg-neutral-800/40 transition-colors"
+                                    >
+                                      <td className="p-3 font-mono text-white">
+                                        {rec.date}
+                                      </td>
+                                      <td className="p-3">
+                                        <span
+                                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                            rec.status === "full"
+                                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                              : rec.status === "half"
+                                              ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                                              : rec.status === "holiday"
+                                              ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                              : "bg-red-500/10 text-red-400 border border-red-500/20"
+                                          }`}
+                                        >
+                                          {rec.status}
+                                        </span>
+                                      </td>
+                                      <td className="p-3 text-white font-mono">
+                                        {rec.check_in_time || "—"}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2397,6 +2565,42 @@ export default function SingleCompanyAdmin({
                             </tr>
                           ))}
                         </tbody>
+                        <tfoot className="bg-neutral-950 border-t-2 border-red-900/50">
+                          <tr>
+                            <td className="p-4 font-extrabold text-white uppercase text-[11px] tracking-wider">
+                              Total Salary ({monthlyReports.length} employees)
+                            </td>
+                            <td className="p-4 text-right font-mono font-bold text-neutral-300">
+                              Rs.{" "}
+                              {monthlyReports
+                                .reduce(
+                                  (sum, r) => sum + Number(r.base_salary || 0),
+                                  0
+                                )
+                                .toLocaleString("en-PK", {
+                                  minimumFractionDigits: 2,
+                                })}
+                            </td>
+                            <td className="p-4"></td>
+                            <td className="p-4"></td>
+                            <td className="p-4 text-right font-mono font-extrabold text-emerald-400 text-sm">
+                              Rs.{" "}
+                              {monthlyReports
+                                .reduce((sum, r) => sum + Number(r.pay || 0), 0)
+                                .toLocaleString("en-PK", {
+                                  minimumFractionDigits: 2,
+                                })}
+                            </td>
+                            <td className="p-4 text-right font-mono font-bold text-yellow-500">
+                              Rs.{" "}
+                              {monthlyReports
+                                .reduce((sum, r) => sum + Number(r.bal || 0), 0)
+                                .toLocaleString("en-PK", {
+                                  minimumFractionDigits: 2,
+                                })}
+                            </td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   </div>
