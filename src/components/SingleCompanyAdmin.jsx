@@ -149,7 +149,11 @@ export default function SingleCompanyAdmin({
   // Add this utility function to format dates
   const formatDate = (dateStr) => {
     if (!dateStr) return "Not provided";
-    const date = new Date(dateStr);
+    // Parse "YYYY-MM-DD" as LOCAL date to avoid UTC → local day-shift.
+    const parts = String(dateStr).split("-");
+    if (parts.length !== 3) return dateStr;
+    const [y, m, d] = parts.map(Number);
+    const date = new Date(y, m - 1, d);
     return date.toLocaleDateString("en-GB", {
       day: "numeric",
       month: "long",
@@ -320,7 +324,7 @@ export default function SingleCompanyAdmin({
         .from("employees")
         .select("*")
         .eq("company_id", companyId)
-        .order("created_at", { ascending: true });
+        .order("base_salary", { ascending: false });
       if (error) throw error;
       setEmployees(data || []);
     } catch (err) {
@@ -947,16 +951,51 @@ export default function SingleCompanyAdmin({
   };
 
   const downloadDailyAttendancePDF = () => {
-    const filterLabel = historyDateFilter
-      ? `For Date: ${historyDateFilter}`
-      : "All Recorded Logs";
-    const title = `${companyName} - Daily Attendance Report (${filterLabel})`;
-    const win = window.open("", "_blank", "width=950,height=800");
-    const formattedRows = filteredHistory
-      .map((rec) => {
+    const now = new Date();
+    const todayStr = makeDateStr(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+
+    // If no date filter is set, default to today only. Name search still applies.
+    const baseRecords = historyDateFilter
+      ? filteredHistory
+      : filteredHistory.filter((rec) => rec.date === todayStr);
+
+    // Salary order: highest paid employee first. Same employee keeps newest date first.
+    const sortedBySalary = [...baseRecords].sort((a, b) => {
+      const ea = employees.find((e) => e.id === a.employee_id);
+      const eb = employees.find((e) => e.id === b.employee_id);
+      const sa = Number(ea?.base_salary || 0);
+      const sb = Number(eb?.base_salary || 0);
+      if (sb !== sa) return sb - sa;
+      return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+    });
+
+    // Date label: single day, or range if records span multiple dates
+    const distinctDates = Array.from(
+      new Set(sortedBySalary.map((r) => r.date))
+    ).sort();
+    let dateLabel;
+    if (distinctDates.length === 0) {
+      dateLabel = `Report Date: ${formatDate(todayStr)}`;
+    } else if (distinctDates.length === 1) {
+      dateLabel = `Report Date: ${formatDate(distinctDates[0])}`;
+    } else {
+      dateLabel = `From ${formatDate(distinctDates[0])} to ${formatDate(
+        distinctDates[distinctDates.length - 1]
+      )}`;
+    }
+
+    const title = `${companyName} - Daily Attendance Report`;
+
+    const formattedRows = sortedBySalary
+      .map((rec, idx) => {
         const emp = employees.find((e) => e.id === rec.employee_id);
         return `
         <tr>
+          <td>${idx + 1}</td>
           <td><strong>${rec.date}</strong></td>
           <td>${emp ? emp.name : "Unknown Employee"}</td>
           <td><span class="badge badge-${rec.status}">${rec.status}</span></td>
@@ -966,16 +1005,17 @@ export default function SingleCompanyAdmin({
       })
       .join("");
 
-    const totalRecords = filteredHistory.length;
-    const fullCount = filteredHistory.filter((r) => r.status === "full").length;
-    const halfCount = filteredHistory.filter((r) => r.status === "half").length;
-    const holidayCount = filteredHistory.filter(
+    const totalRecords = sortedBySalary.length;
+    const fullCount = sortedBySalary.filter((r) => r.status === "full").length;
+    const halfCount = sortedBySalary.filter((r) => r.status === "half").length;
+    const holidayCount = sortedBySalary.filter(
       (r) => r.status === "holiday"
     ).length;
-    const absentCount = filteredHistory.filter(
+    const absentCount = sortedBySalary.filter(
       (r) => r.status === "absent"
     ).length;
 
+    const win = window.open("", "_blank", "width=950,height=800");
     win.document.write(`
       <html>
         <head>
@@ -985,6 +1025,7 @@ export default function SingleCompanyAdmin({
             .header { border-bottom: 2px solid #dc2626; padding-bottom: 12px; margin-bottom: 20px; }
             .company { font-size: 22px; font-weight: bold; color: #0f172a; }
             .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
+            .date-label { font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 8px; }
             .summary-box { display: flex; gap: 12px; margin-bottom: 20px; }
             .card { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; }
             .card .num { font-size: 18px; font-weight: bold; color: #0f172a; }
@@ -1002,11 +1043,12 @@ export default function SingleCompanyAdmin({
         <body>
           <div class="header">
             <div class="company">${companyName}</div>
-            <div class="subtitle">Daily Attendance Report • ${filterLabel}</div>
+            <div class="subtitle">Daily Attendance Report</div>
+            <div class="date-label">${dateLabel}</div>
           </div>
 
           <div class="summary-box">
-            <div class="card"><div class="num">${totalRecords}</div><div class="lbl">Total Logs</div></div>
+            <div class="card"><div class="num">${totalRecords}</div><div class="lbl">Total Employees</div></div>
             <div class="card"><div class="num" style="color:#166534">${fullCount}</div><div class="lbl">Full Days</div></div>
             <div class="card"><div class="num" style="color:#854d0e">${halfCount}</div><div class="lbl">Half Days</div></div>
             <div class="card"><div class="num" style="color:#1e40af">${holidayCount}</div><div class="lbl">Holidays</div></div>
@@ -1016,6 +1058,7 @@ export default function SingleCompanyAdmin({
           <table>
             <thead>
               <tr>
+                <th style="width:44px">#</th>
                 <th>Date</th>
                 <th>Employee Name</th>
                 <th>Attendance Status</th>
@@ -1026,7 +1069,7 @@ export default function SingleCompanyAdmin({
               ${
                 formattedRows.length > 0
                   ? formattedRows
-                  : '<tr><td colspan="4" style="text-align:center">No records available</td></tr>'
+                  : '<tr><td colspan="5" style="text-align:center">No records available</td></tr>'
               }
             </tbody>
           </table>
@@ -1118,7 +1161,10 @@ export default function SingleCompanyAdmin({
           ),
         };
       })
-      .sort((a, b) => (a.emp?.name || "").localeCompare(b.emp?.name || ""));
+      .sort(
+        (a, b) =>
+          Number(b.emp?.base_salary || 0) - Number(a.emp?.base_salary || 0)
+      );
   })();
 
   const totalBudget = employees.reduce(
@@ -1676,6 +1722,7 @@ export default function SingleCompanyAdmin({
                     <table className="w-full text-left text-sm text-neutral-300">
                       <thead className="bg-neutral-950/60 text-[10px] text-neutral-500 uppercase tracking-wider border-b border-neutral-800">
                         <tr>
+                          <th className="p-4 font-semibold w-12">#</th>
                           <th className="p-4 font-semibold">Employee</th>
                           <th className="p-4 font-semibold">Contact</th>
                           <th className="p-4 font-semibold">Monthly Salary</th>
@@ -1686,11 +1733,14 @@ export default function SingleCompanyAdmin({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-neutral-800">
-                        {employees.map((emp) => (
+                        {employees.map((emp, idx) => (
                           <tr
                             key={emp.id}
                             className="hover:bg-neutral-800/40 transition-colors"
                           >
+                            <td className="p-4 text-neutral-500 font-mono text-xs">
+                              {idx + 1}
+                            </td>
                             <td className="p-4">
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 font-bold text-sm shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
@@ -2395,12 +2445,15 @@ export default function SingleCompanyAdmin({
                       <span>Print report</span>
                     </button>
                   </div>
-                  {bulkReports.map((r) => (
+                  {bulkReports.map((r, idx) => (
                     <div
                       key={r.id}
                       className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl space-y-2 text-xs text-neutral-300"
                     >
                       <h4 className="font-bold text-base text-red-500">
+                        <span className="inline-block w-6 text-neutral-500 font-mono">
+                          {idx + 1}.
+                        </span>
                         {r.name}
                       </h4>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-950 p-3 rounded-xl border border-neutral-800">
@@ -2496,6 +2549,7 @@ export default function SingleCompanyAdmin({
                       <table className="w-full text-left text-xs text-neutral-300">
                         <thead className="bg-neutral-950 uppercase text-[10px] text-neutral-400 tracking-wider border-b border-neutral-800">
                           <tr>
+                            <th className="p-4 w-12">#</th>
                             <th className="p-4">Employee</th>
                             <th className="p-4 text-right">Base Salary</th>
                             <th className="p-4 text-center">
@@ -2507,11 +2561,14 @@ export default function SingleCompanyAdmin({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-800">
-                          {monthlyReports.map((r) => (
+                          {monthlyReports.map((r, idx) => (
                             <tr
                               key={r.id}
                               className="hover:bg-neutral-800/40 transition-colors"
                             >
+                              <td className="p-4 text-neutral-500 font-mono text-xs">
+                                {idx + 1}
+                              </td>
                               <td className="p-4 font-bold text-white">
                                 {r.name}
                               </td>
@@ -2567,6 +2624,7 @@ export default function SingleCompanyAdmin({
                         </tbody>
                         <tfoot className="bg-neutral-950 border-t-2 border-red-900/50">
                           <tr>
+                            <td className="p-4"></td>
                             <td className="p-4 font-extrabold text-white uppercase text-[11px] tracking-wider">
                               Total Salary ({monthlyReports.length} employees)
                             </td>
