@@ -541,7 +541,8 @@ export default function SingleCompanyAdmin({
       return;
     }
 
-    const dateStr = isAdmin
+    const canPickDate = isAdmin || managersCanPickDates;
+    const dateStr = canPickDate
       ? makeDateStr(selectedYear, selectedMonth, selectedDay)
       : makeDateStr(
           currentDate.getFullYear(),
@@ -602,7 +603,14 @@ export default function SingleCompanyAdmin({
 
   useEffect(() => {
     if (activeTab === "daily") loadDailyAttendance();
-  }, [activeTab, selectedMonth, selectedYear, selectedDay, employees]);
+  }, [
+    activeTab,
+    selectedMonth,
+    selectedYear,
+    selectedDay,
+    employees,
+    managersCanPickDates,
+  ]);
 
   const handleStatusChange = (empId, status) => {
     if (isLocked) return;
@@ -612,7 +620,8 @@ export default function SingleCompanyAdmin({
   const saveDailyAttendance = async () => {
     if (employees.length === 0) return;
 
-    const dateStr = isAdmin
+    const canPickDate = isAdmin || managersCanPickDates;
+    const dateStr = canPickDate
       ? makeDateStr(selectedYear, selectedMonth, selectedDay)
       : makeDateStr(
           currentDate.getFullYear(),
@@ -676,21 +685,8 @@ export default function SingleCompanyAdmin({
 
       await Promise.all(promises);
 
-      // Create lock for manager
-      if (!isAdmin) {
-        const todayStr = makeDateStr(
-          currentDate.getFullYear(),
-          currentDate.getMonth(),
-          currentDate.getDate()
-        );
-        await supabase
-          .from("manager_daily_locks")
-          .upsert(
-            { user_id: currentUser.id, company_id: companyId, date: todayStr },
-            { onConflict: "user_id, company_id, date" }
-          );
-        setIsLocked(true);
-      }
+      // No lock created — manager can re-save today's attendance anytime.
+      setIsLocked(false);
 
       triggerToast(`Attendance saved for ${dateStr}`);
       fetchAttendanceHistory();
@@ -2114,7 +2110,7 @@ export default function SingleCompanyAdmin({
                 </div>
               </div>
 
-              {isLocked && !isAdmin && (
+              {isLocked && !isAdmin && !managersCanPickDates && (
                 <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-4 text-center text-amber-300 text-sm font-medium">
                   <CheckCircle2 className="w-5 h-5 inline-block mr-2 text-amber-400" />
                   Today’s attendance has already been marked. You cannot edit it
@@ -2155,7 +2151,7 @@ export default function SingleCompanyAdmin({
                                 key={st}
                                 type="button"
                                 onClick={() => handleStatusChange(emp.id, st)}
-                                disabled={isLocked}
+                                disabled={isLocked && !managersCanPickDates}
                                 className={`px-3.5 py-2 rounded-xl text-xs font-bold capitalize border transition-all ${
                                   currentStatus === st
                                     ? "bg-red-600 border-red-500 text-white shadow-md"
@@ -2190,14 +2186,14 @@ export default function SingleCompanyAdmin({
                   })}
                   <button
                     onClick={saveDailyAttendance}
-                    disabled={isLocked}
+                    disabled={isLocked && !managersCanPickDates}
                     className={`w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white shadow-lg transition-colors mt-4 active:scale-[0.99] ${
-                      isLocked
+                      isLocked && !managersCanPickDates
                         ? "bg-neutral-700 cursor-not-allowed shadow-none"
                         : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-950"
                     }`}
                   >
-                    {isLocked
+                    {isLocked && !managersCanPickDates
                       ? "Attendance Already Saved"
                       : "Save Daily Attendance"}
                   </button>
