@@ -21,6 +21,7 @@ import {
   X,
   Menu,
   Search,
+  ArrowLeft,
   Calendar,
   ChevronDown,
   TrendingUp,
@@ -35,6 +36,7 @@ import {
   CreditCard,
   Briefcase,
   DollarSign,
+  MessageSquare,
 } from "lucide-react";
 import CustomMonthPicker from "./ui/CustomMonthPicker";
 import CustomYearPicker from "./ui/CustomYearPicker";
@@ -42,6 +44,8 @@ import CustomDayPicker from "./ui/CustomDayPicker";
 import CustomDatePicker from "./ui/CustomDatePicker";
 import CustomSelect from "./ui/CustomSelect";
 import CustomTimePicker from "./ui/CustomTimePicker";
+import FeedbackFlow from "../feedback/FeedbackFlow";
+import FeedbackAdminDashboard from "../feedback/FeedbackAdminDashboard";
 
 // Modernized styling tokens with native dark color-scheme calendar support
 const inputBase =
@@ -68,10 +72,14 @@ export default function SingleCompanyAdmin({
   const isAdmin = Boolean(currentUser?.is_admin);
   const displayName = currentUser?.full_name || currentUser?.username || "User";
 
+  const feedbackRole = currentUser?.feedback_role || null;
+  const hasFeedbackAccess =
+    feedbackRole === "staff" || feedbackRole === "admin";
+
   const [activeTab, setActiveTab] = useState(isAdmin ? "employees" : "daily");
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileShowHome, setMobileShowHome] = useState(true);
 
   // Form & Date States
   const [empName, setEmpName] = useState("");
@@ -500,6 +508,27 @@ export default function SingleCompanyAdmin({
     );
   };
 
+  const handleToggleEmployeeActive = async (emp) => {
+    if (!isAdmin) return;
+    const next = !emp.is_active;
+    const { error } = await supabase
+      .from("employees")
+      .update({ is_active: next })
+      .eq("id", emp.id)
+      .eq("company_id", companyId);
+    if (error) {
+      triggerToast(`Failed to update status: ${error.message}`, "error");
+      return;
+    }
+    triggerToast(
+      next
+        ? `${emp.name} is now active.`
+        : `${emp.name} is now inactive — removed from today's and future attendance.`,
+      next ? "success" : "error"
+    );
+    fetchEmployees();
+  };
+
   // Attendance History
   const fetchAttendanceHistory = async () => {
     if (!companyId || employees.length === 0) {
@@ -728,33 +757,35 @@ export default function SingleCompanyAdmin({
     if (!isAdmin || employees.length === 0) return;
     const monthYear = makeMonthYearStr(selectedYear, selectedMonth);
     try {
-      const promises = employees.map(async (emp) => {
-        const days = Number(bulkDays[emp.id] || 0);
-        const { data: existing, error: findError } = await supabase
-          .from("bulk_attendance")
-          .select("id")
-          .eq("employee_id", emp.id)
-          .eq("month_year", monthYear)
-          .eq("company_id", companyId)
-          .maybeSingle();
-        if (findError) throw findError;
-        if (existing) {
-          const { error } = await supabase
+      const promises = employees
+        .filter((e) => e.is_active)
+        .map(async (emp) => {
+          const days = Number(bulkDays[emp.id] || 0);
+          const { data: existing, error: findError } = await supabase
             .from("bulk_attendance")
-            .update({ working_days: days })
-            .eq("id", existing.id)
-            .eq("company_id", companyId);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("bulk_attendance").insert({
-            employee_id: emp.id,
-            month_year: monthYear,
-            working_days: days,
-            company_id: companyId,
-          });
-          if (error) throw error;
-        }
-      });
+            .select("id")
+            .eq("employee_id", emp.id)
+            .eq("month_year", monthYear)
+            .eq("company_id", companyId)
+            .maybeSingle();
+          if (findError) throw findError;
+          if (existing) {
+            const { error } = await supabase
+              .from("bulk_attendance")
+              .update({ working_days: days })
+              .eq("id", existing.id)
+              .eq("company_id", companyId);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase.from("bulk_attendance").insert({
+              employee_id: emp.id,
+              month_year: monthYear,
+              working_days: days,
+              company_id: companyId,
+            });
+            if (error) throw error;
+          }
+        });
       await Promise.all(promises);
       triggerToast(
         `Bulk attendance saved for ${months[selectedMonth]} ${selectedYear}`
@@ -769,14 +800,16 @@ export default function SingleCompanyAdmin({
   const generateBulkReport = () => {
     if (!isAdmin) return;
     const totalDays = daysInMonth(selectedYear, selectedMonth);
-    const report = employees.map((emp) => {
-      const work = Number(bulkDays[emp.id] || 0);
-      const abs = totalDays - work;
-      const daily = Number(emp.base_salary) / totalDays;
-      const pay = Math.min(daily * work, Number(emp.base_salary));
-      const bal = Number(emp.base_salary) - pay;
-      return { ...emp, totalDays, work, abs, daily, pay, bal };
-    });
+    const report = employees
+      .filter((e) => e.is_active)
+      .map((emp) => {
+        const work = Number(bulkDays[emp.id] || 0);
+        const abs = totalDays - work;
+        const daily = Number(emp.base_salary) / totalDays;
+        const pay = Math.min(daily * work, Number(emp.base_salary));
+        const bal = Number(emp.base_salary) - pay;
+        return { ...emp, totalDays, work, abs, daily, pay, bal };
+      });
     setBulkReports(report);
   };
 
@@ -822,7 +855,8 @@ export default function SingleCompanyAdmin({
       });
     }
 
-    const report = employees.map((emp) => {
+    const activeEmployees = employees.filter((e) => e.is_active);
+    const report = activeEmployees.map((emp) => {
       if (bulkMap[emp.id] !== undefined) {
         const work = Number(bulkMap[emp.id]);
         const abs = totalDays - work;
@@ -1112,7 +1146,7 @@ export default function SingleCompanyAdmin({
     if (activeTab === "analytics" && isAdmin) fetchTodayAttendance();
   }, [activeTab, employees]);
 
-  const availableTabs = isAdmin
+  const baseTabs = isAdmin
     ? [
         { id: "employees", label: "Employees", icon: Users },
         { id: "daily", label: "Daily Attendance", icon: CalendarCheck },
@@ -1126,6 +1160,20 @@ export default function SingleCompanyAdmin({
         { id: "daily", label: "Daily Attendance", icon: CalendarCheck },
         { id: "history", label: "Attendance History", icon: History },
       ];
+
+  const availableTabs = (() => {
+    if (!hasFeedbackAccess) return baseTabs;
+    if (feedbackRole === "admin") {
+      return [
+        ...baseTabs,
+        { id: "feedback-admin", label: "Feedback", icon: BarChart3 },
+      ];
+    }
+    return [
+      ...baseTabs,
+      { id: "feedback", label: "Feedback", icon: MessageSquare },
+    ];
+  })();
 
   const filteredHistory = historyRecords.filter((rec) => {
     const emp = employees.find((e) => e.id === rec.employee_id);
@@ -1185,6 +1233,100 @@ export default function SingleCompanyAdmin({
   const unmarkedToday = Math.max(totalToday - todayAttendance.length, 0);
   const attendanceRate =
     totalToday > 0 ? Math.round((presentToday / totalToday) * 100) : 0;
+
+  if (activeTab === "feedback" && hasFeedbackAccess) {
+    return (
+      <FeedbackFlow
+        companyId={companyId}
+        companyName={companyName}
+        currentUser={currentUser}
+        onLogout={onLogout}
+        onExit={() => {
+          setMobileShowHome(true);
+          setActiveTab(isAdmin ? "employees" : "daily");
+        }}
+      />
+    );
+  }
+
+  if (
+    activeTab === "feedback-admin" &&
+    feedbackRole === "admin" &&
+    hasFeedbackAccess
+  ) {
+    return (
+      <div className="fixed inset-0 flex bg-neutral-950 text-neutral-100 font-sans overflow-hidden">
+        <aside className="hidden md:flex md:flex-col w-64 bg-neutral-900 border-r border-neutral-800 justify-between shrink-0">
+          <div>
+            <div className="p-5 border-b border-neutral-800 flex items-center space-x-3">
+              <img
+                src="/logo.svg"
+                alt="Logo"
+                className="w-[50px] h-[50px] object-contain shrink-0"
+              />
+              <div className="overflow-hidden">
+                <h2 className="font-bold text-sm text-white truncate">
+                  {companyName}
+                </h2>
+                <span className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
+                  Feedback Admin
+                </span>
+              </div>
+            </div>
+            <nav className="p-3 space-y-1">
+              <button
+                onClick={() => {
+                  setMobileShowHome(true);
+                  setActiveTab("employees");
+                }}
+                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-400 hover:bg-neutral-800 hover:text-white transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Panel</span>
+              </button>
+            </nav>
+          </div>
+          <div className="p-4 border-t border-neutral-800">
+            <button
+              onClick={onLogout}
+              className="w-full flex items-center justify-center space-x-2 bg-neutral-950 hover:bg-red-950/40 border border-neutral-800 hover:border-red-900 text-neutral-400 hover:text-red-400 py-2.5 rounded-xl text-xs font-bold transition-all"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>LOGOUT</span>
+            </button>
+          </div>
+        </aside>
+
+        <div className="flex-1 flex flex-col w-full h-full overflow-hidden min-w-0">
+          <header className="h-16 border-b border-neutral-800 bg-neutral-900/50 flex items-center justify-between px-4 sm:px-8 shrink-0">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setMobileShowHome(true);
+                  setActiveTab("employees");
+                }}
+                className="md:hidden p-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-neutral-300 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <span className="text-sm font-extrabold text-white">
+                Feedback Dashboard
+              </span>
+            </div>
+            <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
+              {displayName}
+            </div>
+          </header>
+          <main className="flex-1 overflow-y-auto p-4 sm:p-8 w-full">
+            <FeedbackAdminDashboard
+              companyId={companyId}
+              companyName={companyName}
+            />
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 flex bg-neutral-950 text-neutral-100 font-sans overflow-hidden">
@@ -1554,22 +1696,8 @@ export default function SingleCompanyAdmin({
         </div>
       )}
 
-      {/* MOBILE OVERLAY */}
-      {mobileMenuOpen && (
-        <div
-          onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 z-40 bg-black/70 md:hidden"
-        />
-      )}
-
       {/* SIDEBAR */}
-      <aside
-        className={`fixed md:relative z-40 h-full w-64 bg-neutral-900 border-r border-neutral-800 flex flex-col justify-between shrink-0 transition-transform duration-300 ${
-          mobileMenuOpen
-            ? "translate-x-0"
-            : "-translate-x-full md:translate-x-0"
-        }`}
-      >
+      <aside className="hidden md:flex md:flex-col w-64 bg-neutral-900 border-r border-neutral-800 justify-between shrink-0">
         <div>
           <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
             <div className="flex items-center space-x-3 overflow-hidden">
@@ -1587,12 +1715,6 @@ export default function SingleCompanyAdmin({
                 </span>
               </div>
             </div>
-            <button
-              onClick={() => setMobileMenuOpen(false)}
-              className="md:hidden text-neutral-400"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
           <nav className="p-3 space-y-1 overflow-y-auto">
             {availableTabs.map((tab) => {
@@ -1602,9 +1724,8 @@ export default function SingleCompanyAdmin({
                 <button
                   key={tab.id}
                   onClick={() => {
-                    if (tab.disabled) return; // ← ADD THIS LINE
+                    if (tab.disabled) return;
                     setActiveTab(tab.id);
-                    setMobileMenuOpen(false);
                   }}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
                     tab.disabled // ← ADD THIS CONDITION
@@ -1636,17 +1757,27 @@ export default function SingleCompanyAdmin({
       <div className="flex-1 flex flex-col w-full h-full overflow-hidden min-w-0">
         <header className="h-16 border-b border-neutral-800 bg-neutral-900/50 flex items-center justify-between px-4 sm:px-8 shrink-0">
           <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden p-2 bg-neutral-800 rounded-lg text-neutral-300"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
+            {!mobileShowHome && (
+              <button
+                onClick={() => setMobileShowHome(true)}
+                className="md:hidden p-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-neutral-300 transition-colors"
+                aria-label="Back to menu"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider hidden sm:inline">
+              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider hidden md:inline">
                 Module /
               </span>
-              <span className="text-sm font-extrabold text-white capitalize">
+              <span className="text-sm font-extrabold text-white capitalize md:hidden">
+                {mobileShowHome
+                  ? isAdmin
+                    ? "Admin Panel"
+                    : "Manager Panel"
+                  : activeTab.replace("-", " ")}
+              </span>
+              <span className="hidden md:inline text-sm font-extrabold text-white capitalize">
                 {activeTab.replace("-", " ")}
               </span>
             </div>
@@ -1680,7 +1811,84 @@ export default function SingleCompanyAdmin({
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8 w-full">
+        {/* MOBILE HOME GRID — visible only on mobile when no section is open */}
+        {mobileShowHome && (
+          <div className="md:hidden flex-1 overflow-y-auto p-4 w-full space-y-5">
+            {/* Greeting card */}
+            <div className="relative bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 border border-neutral-800 rounded-3xl p-6 overflow-hidden">
+              <div className="absolute -top-16 -right-16 w-48 h-48 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="relative">
+                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+                  {isAdmin ? "Admin Access" : "Manager Access"}
+                </p>
+                <h2 className="text-2xl font-black text-white mt-1.5 tracking-tight">
+                  {displayName}
+                </h2>
+                <p className="text-xs text-neutral-400 mt-1 truncate">
+                  {companyName}
+                </p>
+              </div>
+            </div>
+
+            {/* Section grid */}
+            <div className="grid grid-cols-2 gap-3">
+              {availableTabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    disabled={tab.disabled}
+                    onClick={() => {
+                      if (tab.disabled) return;
+                      setActiveTab(tab.id);
+                      setMobileShowHome(false);
+                    }}
+                    className={`relative flex flex-col items-start justify-between gap-5 p-4 rounded-2xl border text-left transition-all duration-200 active:scale-[0.97] ${
+                      tab.disabled
+                        ? "bg-neutral-950/60 border-neutral-900 opacity-50 cursor-not-allowed"
+                        : "bg-neutral-900 border-neutral-800 hover:border-red-600/50 hover:bg-neutral-800/60 cursor-pointer"
+                    }`}
+                  >
+                    <div
+                      className={`p-2.5 rounded-xl border ${
+                        tab.disabled
+                          ? "bg-neutral-900 border-neutral-800 text-neutral-600"
+                          : "bg-red-600/10 border-red-600/20 text-red-400"
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <p
+                      className={`text-sm font-bold leading-tight ${
+                        tab.disabled ? "text-neutral-500" : "text-white"
+                      }`}
+                    >
+                      {tab.label}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Logout */}
+            <button
+              type="button"
+              onClick={onLogout}
+              className="w-full flex items-center justify-center space-x-2 bg-neutral-900 hover:bg-red-950/40 border border-neutral-800 hover:border-red-900 text-neutral-400 hover:text-red-400 py-3.5 rounded-2xl text-xs font-bold transition-all active:scale-[0.99]"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>LOGOUT</span>
+            </button>
+          </div>
+        )}
+
+        <main
+          className={`flex-1 overflow-y-auto p-4 sm:p-8 w-full ${
+            mobileShowHome ? "hidden md:block" : "block"
+          }`}
+        >
           {/* EMPLOYEES TAB */}
           {activeTab === "employees" && isAdmin && (
             <div className="space-y-6 w-full">
@@ -1739,13 +1947,37 @@ export default function SingleCompanyAdmin({
                             </td>
                             <td className="p-4">
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 font-bold text-sm shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+                                <div
+                                  className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold text-sm shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] ${
+                                    emp.is_active
+                                      ? "bg-gradient-to-br from-red-600/30 to-red-500/10 border-red-500/30 text-red-400"
+                                      : "bg-neutral-900 border-neutral-700 text-neutral-500"
+                                  }`}
+                                >
                                   {emp.name?.charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-white">
-                                    {emp.name}
-                                  </p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p
+                                      className={`font-semibold ${
+                                        emp.is_active
+                                          ? "text-white"
+                                          : "text-neutral-500 line-through"
+                                      }`}
+                                    >
+                                      {emp.name}
+                                    </p>
+                                    {!emp.is_active && (
+                                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-400">
+                                        Inactive
+                                      </span>
+                                    )}
+                                    {emp.is_manager && (
+                                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                                        Manager
+                                      </span>
+                                    )}
+                                  </div>
                                   {emp.cnic && (
                                     <p className="text-[10px] text-neutral-500 font-mono">
                                       CNIC: {emp.cnic}
@@ -1785,6 +2017,30 @@ export default function SingleCompanyAdmin({
                             </td>
                             <td className="p-4">
                               <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() =>
+                                    handleToggleEmployeeActive(emp)
+                                  }
+                                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 cursor-pointer shrink-0 ${
+                                    emp.is_active
+                                      ? "bg-emerald-600"
+                                      : "bg-neutral-700"
+                                  }`}
+                                  title={
+                                    emp.is_active
+                                      ? "Active — click to deactivate"
+                                      : "Inactive — click to activate"
+                                  }
+                                  aria-pressed={emp.is_active}
+                                >
+                                  <span
+                                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${
+                                      emp.is_active
+                                        ? "translate-x-5"
+                                        : "translate-x-0"
+                                    }`}
+                                  />
+                                </button>
                                 <button
                                   onClick={() => openEmployeeProfile(emp)}
                                   className="p-2 bg-neutral-950 hover:bg-neutral-800 text-blue-400 border border-neutral-800 rounded-xl transition-colors group/btn"
@@ -2126,64 +2382,75 @@ export default function SingleCompanyAdmin({
                 </div>
               ) : (
                 <div className="space-y-3 w-full">
-                  {employees.map((emp) => {
-                    const currentStatus = dailyStatus[emp.id] || "absent";
-                    return (
-                      <div
-                        key={emp.id}
-                        className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
-                      >
-                        <div>
-                          <span className="font-bold text-sm text-white block">
-                            {emp.name}
-                          </span>
-                          {isAdmin && (
-                            <span className="text-xs text-neutral-500 font-mono">
-                              Rs. {Number(emp.base_salary).toLocaleString()}
+                  {employees
+                    .filter((emp) => {
+                      if (emp.is_active) return true;
+                      // Inactive employees only appear for dates where they
+                      // already have a record (so their past data stays visible).
+                      return dailyStatus[emp.id] !== undefined;
+                    })
+                    .map((emp) => {
+                      const currentStatus = dailyStatus[emp.id] || "absent";
+                      return (
+                        <div
+                          key={emp.id}
+                          className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
+                        >
+                          <div>
+                            <span className="font-bold text-sm text-white block">
+                              {emp.name}
                             </span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                          <div className="flex gap-2">
-                            {["full", "half", "holiday", "absent"].map((st) => (
-                              <button
-                                key={st}
-                                type="button"
-                                onClick={() => handleStatusChange(emp.id, st)}
-                                disabled={isLocked && !managersCanPickDates}
-                                className={`px-3.5 py-2 rounded-xl text-xs font-bold capitalize border transition-all ${
-                                  currentStatus === st
-                                    ? "bg-red-600 border-red-500 text-white shadow-md"
-                                    : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
-                                } ${
-                                  isLocked
-                                    ? "opacity-50 cursor-not-allowed"
-                                    : ""
-                                }`}
-                              >
-                                {st}
-                              </button>
-                            ))}
+                            {isAdmin && (
+                              <span className="text-xs text-neutral-500 font-mono">
+                                Rs. {Number(emp.base_salary).toLocaleString()}
+                              </span>
+                            )}
                           </div>
 
-                          <CustomTimePicker
-                            label="In"
-                            value={dailyCheckIn[emp.id] || ""}
-                            onChange={(val) =>
-                              setDailyCheckIn((prev) => ({
-                                ...prev,
-                                [emp.id]: val,
-                              }))
-                            }
-                            placeholder="Check-In Time"
-                            className="w-44"
-                            disabled={isLocked}
-                          />
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex gap-2">
+                              {["full", "half", "holiday", "absent"].map(
+                                (st) => (
+                                  <button
+                                    key={st}
+                                    type="button"
+                                    onClick={() =>
+                                      handleStatusChange(emp.id, st)
+                                    }
+                                    disabled={isLocked && !managersCanPickDates}
+                                    className={`px-3.5 py-2 rounded-xl text-xs font-bold capitalize border transition-all ${
+                                      currentStatus === st
+                                        ? "bg-red-600 border-red-500 text-white shadow-md"
+                                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
+                                    } ${
+                                      isLocked
+                                        ? "opacity-50 cursor-not-allowed"
+                                        : ""
+                                    }`}
+                                  >
+                                    {st}
+                                  </button>
+                                )
+                              )}
+                            </div>
+
+                            <CustomTimePicker
+                              label="In"
+                              value={dailyCheckIn[emp.id] || ""}
+                              onChange={(val) =>
+                                setDailyCheckIn((prev) => ({
+                                  ...prev,
+                                  [emp.id]: val,
+                                }))
+                              }
+                              placeholder="Check-In Time"
+                              className="w-44"
+                              disabled={isLocked}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                   <button
                     onClick={saveDailyAttendance}
                     disabled={isLocked && !managersCanPickDates}
@@ -2376,32 +2643,37 @@ export default function SingleCompanyAdmin({
                 </p>
               ) : (
                 <div className="space-y-3 w-full">
-                  {employees.map((emp) => (
-                    <div
-                      key={emp.id}
-                      className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
-                    >
-                      <div className="min-w-0">
-                        <span className="font-bold text-sm text-white block truncate">
-                          {emp.name}
-                        </span>
-                        <span className="text-xs text-neutral-500 font-mono">
-                          Rs. {Number(emp.base_salary).toLocaleString()}
-                        </span>
+                  {employees
+                    .filter((e) => e.is_active)
+                    .map((emp) => (
+                      <div
+                        key={emp.id}
+                        className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-bold text-sm text-white block truncate">
+                            {emp.name}
+                          </span>
+                          <span className="text-xs text-neutral-500 font-mono">
+                            Rs. {Number(emp.base_salary).toLocaleString()}
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          max={daysInMonth(selectedYear, selectedMonth)}
+                          value={bulkDays[emp.id] || ""}
+                          onChange={(e) =>
+                            setBulkDays({
+                              ...bulkDays,
+                              [emp.id]: e.target.value,
+                            })
+                          }
+                          placeholder="Working days"
+                          className={`${inputBase} p-2.5 text-center w-full sm:w-36 shrink-0`}
+                        />
                       </div>
-                      <input
-                        type="number"
-                        min="0"
-                        max={daysInMonth(selectedYear, selectedMonth)}
-                        value={bulkDays[emp.id] || ""}
-                        onChange={(e) =>
-                          setBulkDays({ ...bulkDays, [emp.id]: e.target.value })
-                        }
-                        placeholder="Working days"
-                        className={`${inputBase} p-2.5 text-center w-full sm:w-36 shrink-0`}
-                      />
-                    </div>
-                  ))}
+                    ))}
                   <div className="flex flex-col sm:flex-row gap-4 pt-4">
                     <button
                       onClick={saveBulkAttendance}

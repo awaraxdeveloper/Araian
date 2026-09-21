@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import LoginPage from "./components/LoginPage";
 import SingleCompanyAdmin from "./components/SingleCompanyAdmin";
 
 export default function App() {
-  // Load saved session from localStorage on startup
   const [session, setSession] = useState(() => {
     const saved = localStorage.getItem("portal_session");
     return saved ? JSON.parse(saved) : null;

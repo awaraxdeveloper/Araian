@@ -125,9 +125,9 @@ export default function LoginPage({ onLoginSuccess }) {
   }
 
   return (
-    <div className="min-h-screen w-full bg-neutral-950 flex flex-col lg:flex-row">
+    <div className="min-h-[100dvh] w-full bg-neutral-950 flex flex-col lg:flex-row">
       {/* LEFT: Login Form – modern, clean, no glass */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-6 relative overflow-y-auto">
+      <div className="w-full lg:w-1/2 flex-1 flex items-center justify-center p-4 sm:p-6 relative overflow-y-auto">
         <div className="w-full max-w-md space-y-5 sm:space-y-6 py-6">
           {/* Brand */}
           <div className="flex items-center space-x-3 my-2 sm:my-6">
