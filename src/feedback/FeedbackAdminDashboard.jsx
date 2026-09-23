@@ -378,7 +378,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
     [filteredResponses]
   );
 
-  const exportPDF = () => {
+  const buildReportHTML = () => {
     const [from, to] = rangeToDates(range, customFrom, customTo);
     const sameDay =
       from.getFullYear() === to.getFullYear() &&
@@ -435,7 +435,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
       })
       .join("");
 
-    const html = `
+    return `
       <html>
         <head>
           <title>${companyName} — Feedback Report</title>
@@ -501,9 +501,17 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
         </body>
       </html>
     `;
+  };
 
+  const previewPDF = () => {
     const win = window.open("", "_blank", "width=1000,height=800");
-    win.document.write(html);
+    win.document.write(buildReportHTML());
+    win.document.close();
+  };
+
+  const exportPDF = () => {
+    const win = window.open("", "_blank", "width=1000,height=800");
+    win.document.write(buildReportHTML());
     win.document.close();
     setTimeout(() => win.print(), 400);
   };
@@ -676,13 +684,24 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
             {metrics.total !== 1 ? "s" : ""}
           </p>
         </div>
-        <button
-          onClick={exportPDF}
-          className="h-12 sm:h-10 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white font-bold px-4 rounded-xl text-sm sm:text-xs tracking-wide uppercase flex items-center gap-2 transition-all active:scale-[0.98] shrink-0"
-        >
-          <FileText className="w-5 h-5 sm:w-4 sm:h-4 text-red-500" />
-          <span>PDF</span>
-        </button>
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={previewPDF}
+            className="h-12 sm:h-10 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white font-bold px-3 sm:px-4 rounded-xl text-sm sm:text-xs tracking-wide uppercase flex items-center gap-2 transition-all active:scale-[0.98]"
+            title="Preview report"
+          >
+            <Eye className="w-5 h-5 sm:w-4 sm:h-4 text-blue-400" />
+            <span className="hidden sm:inline">Preview</span>
+          </button>
+          <button
+            onClick={exportPDF}
+            className="h-12 sm:h-10 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white font-bold px-3 sm:px-4 rounded-xl text-sm sm:text-xs tracking-wide uppercase flex items-center gap-2 transition-all active:scale-[0.98]"
+            title="Download PDF"
+          >
+            <FileText className="w-5 h-5 sm:w-4 sm:h-4 text-red-500" />
+            <span className="hidden sm:inline">Download</span>
+          </button>
+        </div>
       </div>
 
       {/* Range selector — wraps on mobile */}
@@ -1840,6 +1859,20 @@ function ResponseDetailModal({ r, areaMap, bikeModelMap, onClose }) {
               : r.attention_given === "partial"
               ? "Partially"
               : "No"}
+          </Field>
+          <Field label="Computerised Diagnosis">
+            {r.computer_diagnosis === "yes"
+              ? "Yes"
+              : r.computer_diagnosis === "no"
+              ? "No"
+              : "—"}
+          </Field>
+          <Field label="RPM / Petrol Setting Check">
+            {r.computer_rpm_check === "yes"
+              ? "Yes"
+              : r.computer_rpm_check === "no"
+              ? "No"
+              : "—"}
           </Field>
         </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../lib/supabaseClient";
 import {
   User,
@@ -16,9 +16,11 @@ import {
   LogOut,
   Sparkles,
   ChevronDown,
+  Clock,
+  X,
 } from "lucide-react";
 
-const TOTAL_STEPS = 10;
+const TOTAL_STEPS = 12;
 
 const emptyForm = {
   customerId: null,
@@ -32,6 +34,8 @@ const emptyForm = {
   bikeYear: "",
   workers: [],
   attention: "",
+  computerDiagnosis: "",
+  computerRpmCheck: "",
   rStaff: 0,
   rService: 0,
   rExplain: 0,
@@ -42,9 +46,6 @@ const emptyForm = {
   comment: "",
 };
 
-// -------- shared style tokens --------
-// One input look for every field. Text, number, select, textarea, and
-// the worker multi-select all use this exact base.
 const fieldBase =
   "w-full h-11 rounded-xl bg-white/[0.035] border border-white/[0.08] text-[15px] text-white placeholder-white/30 " +
   "backdrop-blur-xl focus:outline-none focus:bg-white/[0.05] focus:border-red-500/60 focus:ring-2 focus:ring-red-500/15 " +
@@ -52,6 +53,18 @@ const fieldBase =
 
 const fieldIcon =
   "w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none";
+
+function relTime(iso) {
+  if (!iso) return "";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
 
 function FieldLabel({ children, required }) {
   return (
@@ -99,9 +112,9 @@ function ChoiceButtons({ options, value, onChange }) {
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
-            className={`w-full px-4 py-3.5 rounded-xl text-[15px] font-semibold text-left flex items-center justify-between gap-3 transition-colors cursor-pointer border ${
+            className={`w-full px-4 py-4 rounded-xl text-[15px] font-semibold text-center flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer border ${
               active
-                ? "bg-red-600/15 border-red-500/50 text-white"
+                ? "bg-red-600/15 border-red-500/50 text-white shadow-[0_0_24px_-8px_rgba(220,38,38,0.5)]"
                 : "bg-white/[0.03] border-white/[0.08] text-white/85 hover:bg-white/[0.05] hover:border-white/[0.14]"
             }`}
           >
@@ -335,6 +348,20 @@ function WorkerMultiSelect({ workers, value, onChange }) {
   );
 }
 
+function SectionHeader({ icon: Icon, label }) {
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <div className="p-1.5 rounded-lg bg-red-500/12 border border-red-500/20">
+        <Icon className="w-3.5 h-3.5 text-red-400" />
+      </div>
+      <span className="text-[10.5px] font-semibold text-white/50 uppercase tracking-[0.16em]">
+        {label}
+      </span>
+      <div className="flex-1 h-px bg-gradient-to-r from-white/[0.08] to-transparent" />
+    </div>
+  );
+}
+
 export default function FeedbackFlow({
   companyId,
   companyName,
@@ -348,6 +375,10 @@ export default function FeedbackFlow({
   const [submitting, setSubmitting] = useState(false);
   const [todayCount, setTodayCount] = useState(0);
   const [toast, setToast] = useState(null);
+
+  const [drafts, setDrafts] = useState([]);
+  const [draftId, setDraftId] = useState(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   const [areas, setAreas] = useState([]);
   const [bikeModels, setBikeModels] = useState([]);
@@ -420,10 +451,64 @@ export default function FeedbackFlow({
     setTodayCount(count || 0);
   };
 
+  const loadDrafts = async () => {
+    if (!companyId || !currentUser?.id) return;
+    const { data } = await supabase
+      .from("fb_drafts")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("user_id", currentUser.id)
+      .order("updated_at", { ascending: false });
+    setDrafts(data || []);
+  };
+
   useEffect(() => {
-    if (view === "home") loadTodayCount();
+    if (view === "home") {
+      loadTodayCount();
+      loadDrafts();
+    }
   }, [view, companyId, currentUser?.id]);
 
+  // Autosave: create new or update existing draft
+  useEffect(() => {
+    if (!draftLoaded || view !== "flow") return;
+    const hasContent =
+      form.name?.trim() ||
+      form.mobile ||
+      form.bikeRegNo ||
+      form.attention ||
+      form.rStaff > 0;
+    if (!hasContent && step === 1) return;
+
+    const t = setTimeout(async () => {
+      if (draftId) {
+        await supabase
+          .from("fb_drafts")
+          .update({
+            form_data: form,
+            current_step: step,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", draftId);
+      } else {
+        const { data } = await supabase
+          .from("fb_drafts")
+          .insert({
+            company_id: companyId,
+            user_id: currentUser.id,
+            form_data: form,
+            current_step: step,
+          })
+          .select("id")
+          .single();
+        if (data) setDraftId(data.id);
+      }
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, step, draftLoaded, view, companyId, currentUser?.id, draftId]);
+
+  // Autosuggest effects
   useEffect(() => {
     const q = form.name.trim();
     if (q.length < 2) return setNameSuggestions([]);
@@ -575,20 +660,24 @@ export default function FeedbackFlow({
       case 2:
         return !!form.attention;
       case 3:
-        return form.rStaff > 0;
+        return !!form.computerDiagnosis;
       case 4:
-        return form.rService > 0;
+        return !!form.computerRpmCheck;
       case 5:
-        return form.rExplain > 0;
+        return form.rStaff > 0;
       case 6:
-        return form.rFacility > 0;
+        return form.rService > 0;
       case 7:
-        return form.rWait > 0;
+        return form.rExplain > 0;
       case 8:
-        return form.rOverall > 0;
+        return form.rFacility > 0;
       case 9:
-        return !!form.recommendation;
+        return form.rWait > 0;
       case 10:
+        return form.rOverall > 0;
+      case 11:
+        return !!form.recommendation;
+      case 12:
         return true;
       default:
         return false;
@@ -645,6 +734,8 @@ export default function FeedbackFlow({
           taken_by_name:
             currentUser.full_name || currentUser.username || "Staff",
           attention_given: form.attention,
+          computer_diagnosis: form.computerDiagnosis,
+          computer_rpm_check: form.computerRpmCheck,
           rating_staff_behaviour: form.rStaff,
           rating_service_quality: form.rService,
           rating_work_explanation: form.rExplain,
@@ -669,9 +760,16 @@ export default function FeedbackFlow({
         if (wErr) throw wErr;
       }
 
-      setView("thanks");
+      // Only clear THIS draft (the one being submitted)
+      if (draftId) {
+        await supabase.from("fb_drafts").delete().eq("id", draftId);
+      }
+
+      setDraftId(null);
       setForm(emptyForm);
       setStep(1);
+      setDraftLoaded(false);
+      setView("thanks");
     } catch (err) {
       triggerToast(`Save failed: ${err.message}`, "error");
     } finally {
@@ -682,7 +780,36 @@ export default function FeedbackFlow({
   const startNewFeedback = () => {
     setForm(emptyForm);
     setStep(1);
+    setDraftId(null);
     setView("flow");
+    setDraftLoaded(true);
+  };
+
+  const continueDraft = (d) => {
+    setForm({ ...emptyForm, ...(d.form_data || {}) });
+    setStep(d.current_step || 1);
+    setDraftId(d.id);
+    setView("flow");
+    setDraftLoaded(true);
+  };
+
+  const removeDraft = async (id, e) => {
+    e?.stopPropagation();
+    await supabase.from("fb_drafts").delete().eq("id", id);
+    setDrafts((prev) => prev.filter((d) => d.id !== id));
+    if (draftId === id) setDraftId(null);
+    triggerToast("Pending removed");
+  };
+
+  // Shell back-arrow behavior:
+  //  - on home view: exits to main panel
+  //  - elsewhere: returns to the feedback home view
+  const handleHeaderBack = () => {
+    if (view === "home") {
+      if (onExit) onExit();
+    } else {
+      setView("home");
+    }
   };
 
   // ---------- render ----------
@@ -691,9 +818,9 @@ export default function FeedbackFlow({
     return (
       <Shell
         title={companyName}
-        subtitle={`Welcome, ${currentUser?.full_name || currentUser?.username}`}
+        subtitle="Customer Feedback"
         onLogout={onLogout}
-        onExit={onExit}
+        onBack={handleHeaderBack}
       >
         <div className="space-y-5">
           {/* Today card */}
@@ -711,13 +838,13 @@ export default function FeedbackFlow({
                   recorded by you today
                 </p>
               </div>
-              {/* <div className="p-3 rounded-xl bg-white/[0.05] border border-white/[0.08]">
+              <div className="p-3 rounded-xl bg-white/[0.05] border border-white/[0.08]">
                 <Sparkles className="w-6 h-6 text-red-300" />
-              </div> */}
+              </div>
             </div>
           </div>
 
-          {/* CTA */}
+          {/* New Feedback — always visible */}
           <button
             type="button"
             onClick={startNewFeedback}
@@ -731,13 +858,64 @@ export default function FeedbackFlow({
                 New Feedback
               </p>
               <p className="text-xs text-red-100/70 mt-1">
-                10 quick questions · ~2 min
+                12 quick questions · ~3 min
               </p>
             </div>
             <div className="p-3 rounded-xl bg-white/[0.12] border border-white/[0.15]">
               <ArrowRight className="w-5 h-5 text-white" />
             </div>
           </button>
+
+          {/* Pending drafts */}
+          {drafts.length > 0 && (
+            <div className="space-y-2.5 pt-1">
+              <div className="flex items-center justify-between px-1">
+                <p className="text-[10px] font-bold text-amber-300/90 uppercase tracking-[0.2em]">
+                  Pending · {drafts.length}
+                </p>
+              </div>
+              {drafts.map((d) => {
+                const name = d.form_data?.name?.trim();
+                const sub = name || d.form_data?.mobile || "Untitled";
+                return (
+                  <div
+                    key={d.id}
+                    className="relative rounded-2xl bg-gradient-to-br from-amber-600/12 to-amber-500/5 border border-amber-500/30 flex items-stretch overflow-hidden"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => continueDraft(d)}
+                      className="flex-1 p-4 flex items-center justify-between gap-3 text-left transition-all active:scale-[0.99] cursor-pointer min-w-0"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/25 shrink-0">
+                          <Clock className="w-5 h-5 text-amber-300" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[15px] font-bold text-white truncate">
+                            {sub}
+                          </p>
+                          <p className="text-xs text-white/50 mt-0.5 truncate">
+                            Step {d.current_step} of {TOTAL_STEPS}
+                            {d.updated_at ? ` · ${relTime(d.updated_at)}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-amber-300 shrink-0" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => removeDraft(d.id, e)}
+                      className="px-3 flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors cursor-pointer border-l border-amber-500/20"
+                      aria-label="Remove pending"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </Shell>
     );
@@ -749,7 +927,7 @@ export default function FeedbackFlow({
         title={companyName}
         subtitle="Feedback complete"
         onLogout={onLogout}
-        onExit={onExit}
+        onBack={handleHeaderBack}
       >
         <div className="flex flex-col items-center justify-center text-center py-8 space-y-6">
           <div className="p-5 rounded-full bg-emerald-500/10 border border-emerald-400/25">
@@ -783,10 +961,12 @@ export default function FeedbackFlow({
   return (
     <Shell
       title={companyName}
-      subtitle={`Step ${step} of ${TOTAL_STEPS}`}
+      subtitle="Customer Feedback"
       onLogout={onLogout}
-      onExit={onExit}
+      onBack={handleHeaderBack}
       progress={(step / TOTAL_STEPS) * 100}
+      step={step}
+      total={TOTAL_STEPS}
     >
       <div className="space-y-5 pb-4">
         {step === 1 && (
@@ -824,6 +1004,38 @@ export default function FeedbackFlow({
         )}
 
         {step === 3 && (
+          <StepQuestion
+            title="کیا کام شروع کرنے سے پہلے بائیک کا مسئلہ کمپیوٹرائزڈ چیکنگ کے ذریعے معلوم کیا گیا؟"
+            hint="Computerised diagnosis before work"
+          >
+            <ChoiceButtons
+              value={form.computerDiagnosis}
+              onChange={(v) => setField("computerDiagnosis", v)}
+              options={[
+                { value: "yes", label: "جی ہاں (Yes)" },
+                { value: "no", label: "نہیں (No)" },
+              ]}
+            />
+          </StepQuestion>
+        )}
+
+        {step === 4 && (
+          <StepQuestion
+            title="کیا کام مکمل ہونے کے بعد پٹرول کی سیٹنگ اور RPM کمپیوٹرائزڈ طریقے سے چیک کیے گئے؟"
+            hint="Post-service RPM & tuning check"
+          >
+            <ChoiceButtons
+              value={form.computerRpmCheck}
+              onChange={(v) => setField("computerRpmCheck", v)}
+              options={[
+                { value: "yes", label: "جی ہاں (Yes)" },
+                { value: "no", label: "نہیں (No)" },
+              ]}
+            />
+          </StepQuestion>
+        )}
+
+        {step === 5 && (
           <StepRating
             title="آپ ہمارے اسٹاف کے رویے اور برتاؤ کو کتنے اسٹار دیں گے؟"
             hint="Staff behaviour"
@@ -831,7 +1043,7 @@ export default function FeedbackFlow({
             onChange={(v) => setField("rStaff", v)}
           />
         )}
-        {step === 4 && (
+        {step === 6 && (
           <StepRating
             title="آپ بائیک کے کام اور سروس کے معیار کو کتنے اسٹار دیں گے؟"
             hint="Service & work quality"
@@ -839,7 +1051,7 @@ export default function FeedbackFlow({
             onChange={(v) => setField("rService", v)}
           />
         )}
-        {step === 5 && (
+        {step === 7 && (
           <StepRating
             title="کیا آپ کو بائیک کے کام کے بارے میں مناسب طریقے سے سمجھایا گیا؟"
             hint="Work explanation"
@@ -847,7 +1059,7 @@ export default function FeedbackFlow({
             onChange={(v) => setField("rExplain", v)}
           />
         )}
-        {step === 6 && (
+        {step === 8 && (
           <StepRating
             title="ورکشاپ کی صفائی اور کسٹمر کے بیٹھنے کی سہولت کو کتنے اسٹار دیں گے؟"
             hint="Workshop facility & cleanliness"
@@ -855,7 +1067,7 @@ export default function FeedbackFlow({
             onChange={(v) => setField("rFacility", v)}
           />
         )}
-        {step === 7 && (
+        {step === 9 && (
           <StepRating
             title="بائیک کا کام مکمل کرنے میں لگنے والے وقت کو کتنے اسٹار دیں گے؟"
             hint="Waiting time"
@@ -863,7 +1075,7 @@ export default function FeedbackFlow({
             onChange={(v) => setField("rWait", v)}
           />
         )}
-        {step === 8 && (
+        {step === 10 && (
           <StepRating
             title="مجموعی طور پر ARAIAN HONDA CENTRE کے بارے میں آپ کیا ریٹنگ دیں گے؟"
             hint="Overall experience"
@@ -872,7 +1084,7 @@ export default function FeedbackFlow({
           />
         )}
 
-        {step === 9 && (
+        {step === 11 && (
           <StepQuestion
             title="کیا آپ ARAIAN HONDA CENTRE کو دوسروں کو تجویز کریں گے؟"
             hint="Would you recommend us?"
@@ -889,7 +1101,7 @@ export default function FeedbackFlow({
           </StepQuestion>
         )}
 
-        {step === 10 && (
+        {step === 12 && (
           <StepQuestion
             title="رائے، شکایت یا مشورہ"
             hint="Optional — leave blank if none"
@@ -902,7 +1114,7 @@ export default function FeedbackFlow({
                 placeholder="مثال: قیمت کا مسئلہ / انتظار کا مسئلہ / کوئی تجویز…"
                 rows={6}
                 maxLength={1000}
-                className="w-full rounded-xl bg-white/[0.035] border border-white/[0.08] text-[15px] text-white placeholder-white/30 backdrop-blur-xl focus:outline-none focus:bg-white/[0.05] focus:border-red-500/60 focus:ring-2 focus:ring-red-500/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors pl-9 pr-3.5 py-3 resize-none"
+                className="w-full rounded-xl bg-white/[0.035] border border-white/[0.08] text-[15px] text-white placeholder-white/30 backdrop-blur-xl focus:outline-none focus:bg-white/[0.05] focus:border-red-500/60 focus:ring-2 focus:ring-red-500/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors pl-9 pr-3.5 py-3 resize-none text-center"
               />
               <p className="text-[11px] text-white/30 text-right mt-1.5">
                 {form.comment.length}/1000
@@ -970,48 +1182,72 @@ export default function FeedbackFlow({
 
 // -------- shell --------
 
-function Shell({ title, subtitle, onLogout, onExit, progress, children }) {
+function Shell({
+  title,
+  subtitle,
+  onLogout,
+  onBack,
+  progress,
+  step,
+  total,
+  children,
+}) {
+  const segments = useMemo(
+    () => (total ? Array.from({ length: total }) : []),
+    [total]
+  );
+
   return (
     <div className="min-h-screen bg-neutral-950 text-white flex flex-col relative overflow-hidden">
       <div className="pointer-events-none absolute -top-40 -right-40 w-[380px] h-[380px] bg-red-600/[0.08] rounded-full blur-[100px]" />
 
-      <header className="sticky top-0 z-20 backdrop-blur-2xl bg-neutral-950/70 border-b border-white/[0.06]">
-        <div className="h-14 px-4 flex items-center justify-between max-w-lg mx-auto w-full gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            {onExit && (
-              <button
-                type="button"
-                onClick={onExit}
-                className="p-2 rounded-lg text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0 cursor-pointer"
-                aria-label="Back to panel"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            )}
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold text-white/40 uppercase tracking-[0.14em] truncate">
-                {subtitle}
-              </p>
-              <h1 className="text-[13px] font-bold text-white truncate">
-                {title}
-              </h1>
-            </div>
+      <header className="sticky top-0 z-20 backdrop-blur-2xl bg-neutral-950/75 border-b border-white/[0.06]">
+        <div className="h-16 px-3 flex items-center justify-between max-w-lg mx-auto w-full gap-2">
+          <button
+            type="button"
+            onClick={onBack || (() => {})}
+            className="p-2.5 rounded-xl text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0 cursor-pointer"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+
+          <div className="flex-1 text-center min-w-0">
+            <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] truncate">
+              {title}
+            </p>
+            <p className="text-[14px] font-bold text-white truncate mt-0.5">
+              {subtitle}
+            </p>
           </div>
+
           <button
             type="button"
             onClick={onLogout}
-            className="p-2 rounded-lg text-white/45 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors shrink-0 cursor-pointer"
+            className="p-2.5 rounded-xl text-white/45 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors shrink-0 cursor-pointer"
             aria-label="Logout"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-5 h-5" />
           </button>
         </div>
-        {typeof progress === "number" && (
-          <div className="h-[3px] bg-white/[0.04]">
-            <div
-              className="h-full bg-gradient-to-r from-red-500 to-red-600 transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
+
+        {typeof progress === "number" && segments.length > 0 && (
+          <div className="max-w-lg mx-auto px-4 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex-1 flex gap-1">
+                {segments.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`flex-1 h-1 rounded-full transition-colors duration-300 ${
+                      i < step ? "bg-red-500" : "bg-white/[0.07]"
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-[10px] font-bold text-white/55 tabular-nums shrink-0">
+                {step}/{total}
+              </span>
+            </div>
           </div>
         )}
       </header>
@@ -1028,12 +1264,12 @@ function Shell({ title, subtitle, onLogout, onExit, progress, children }) {
 function StepQuestion({ title, hint, children }) {
   return (
     <div className="space-y-5">
-      <div className="space-y-2">
-        <h2 className="text-[21px] leading-snug font-black text-white tracking-tight">
+      <div className="space-y-2 text-center">
+        <h2 className="text-[20px] leading-snug font-black text-white tracking-tight">
           {title}
         </h2>
         {hint && (
-          <p className="text-[10.5px] font-semibold text-white/40 uppercase tracking-[0.14em]">
+          <p className="text-[10.5px] font-semibold text-white/40 uppercase tracking-[0.16em]">
             {hint}
           </p>
         )}
@@ -1091,11 +1327,10 @@ function StepCustomer({
 
   return (
     <div className="space-y-6">
-      <h2 className="text-[21px] font-black text-white tracking-tight">
+      <h2 className="text-[20px] font-black text-white tracking-tight text-center">
         Customer & Job Details
       </h2>
 
-      {/* Customer */}
       <div className="space-y-3.5">
         <SectionHeader icon={User} label="Customer" />
 
@@ -1169,7 +1404,6 @@ function StepCustomer({
         </div>
       </div>
 
-      {/* Bike */}
       <div className="space-y-3.5">
         <SectionHeader icon={Bike} label="Bike" />
 
@@ -1203,7 +1437,6 @@ function StepCustomer({
         />
       </div>
 
-      {/* Work */}
       <div className="space-y-3.5">
         <SectionHeader icon={Wrench} label="Work Details" />
         <WorkerMultiSelect
@@ -1212,20 +1445,6 @@ function StepCustomer({
           onChange={(v) => setField("workers", v)}
         />
       </div>
-    </div>
-  );
-}
-
-function SectionHeader({ icon: Icon, label }) {
-  return (
-    <div className="flex items-center gap-2 pt-1">
-      <div className="p-1.5 rounded-lg bg-red-500/12 border border-red-500/20">
-        <Icon className="w-3.5 h-3.5 text-red-400" />
-      </div>
-      <span className="text-[10.5px] font-semibold text-white/50 uppercase tracking-[0.16em]">
-        {label}
-      </span>
-      <div className="flex-1 h-px bg-gradient-to-r from-white/[0.08] to-transparent" />
     </div>
   );
 }
