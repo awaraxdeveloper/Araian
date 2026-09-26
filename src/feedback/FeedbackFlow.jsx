@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import {
   User,
@@ -7,7 +7,6 @@ import {
   Bike,
   Wrench,
   Star,
-  ArrowLeft,
   ArrowRight,
   Loader2,
   AlertCircle,
@@ -15,9 +14,13 @@ import {
   MessageSquare,
   LogOut,
   Sparkles,
-  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Check,
   Clock,
   X,
+  Calendar,
+  Home,
 } from "lucide-react";
 
 const TOTAL_STEPS = 12;
@@ -46,13 +49,8 @@ const emptyForm = {
   comment: "",
 };
 
-const fieldBase =
-  "w-full h-11 rounded-xl bg-white/[0.035] border border-white/[0.08] text-[15px] text-white placeholder-white/30 " +
-  "backdrop-blur-xl focus:outline-none focus:bg-white/[0.05] focus:border-red-500/60 focus:ring-2 focus:ring-red-500/15 " +
-  "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors";
-
-const fieldIcon =
-  "w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none";
+const btnPrimary =
+  "bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] text-white shadow-[0_10px_28px_-10px_rgba(124,92,255,0.6)]";
 
 function relTime(iso) {
   if (!iso) return "";
@@ -62,141 +60,24 @@ function relTime(iso) {
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function FieldLabel({ children, required }) {
+// ============================================================
+// iOS-STYLE FORM INPUTS
+// ============================================================
+
+function FieldLabel({ children, required, trailing }) {
   return (
-    <label className="block text-[10.5px] font-semibold text-white/50 uppercase tracking-[0.14em] mb-1.5">
+    <label className="block text-[11.5px] font-semibold text-white/75 uppercase tracking-[0.14em] mb-0.5">
       {children}
-      {required && <span className="text-red-500 ml-1">*</span>}
-    </label>
-  );
-}
-
-function StarRating({ value, onChange }) {
-  return (
-    <div className="flex justify-center gap-1 py-5">
-      {[1, 2, 3, 4, 5].map((n) => {
-        const active = value >= n;
-        return (
-          <button
-            key={n}
-            type="button"
-            onClick={() => onChange(n)}
-            className="p-1.5 transition-transform duration-150 active:scale-90 cursor-pointer"
-            aria-label={`${n} star${n > 1 ? "s" : ""}`}
-          >
-            <Star
-              className={`w-11 h-11 transition-colors ${
-                active
-                  ? "fill-yellow-400 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.45)]"
-                  : "text-white/15"
-              }`}
-            />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ChoiceButtons({ options, value, onChange }) {
-  return (
-    <div className="space-y-2.5">
-      {options.map((opt) => {
-        const active = value === opt.value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onChange(opt.value)}
-            className={`w-full px-4 py-4 rounded-xl text-[15px] font-semibold text-center flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer border ${
-              active
-                ? "bg-red-600/15 border-red-500/50 text-white shadow-[0_0_24px_-8px_rgba(220,38,38,0.5)]"
-                : "bg-white/[0.03] border-white/[0.08] text-white/85 hover:bg-white/[0.05] hover:border-white/[0.14]"
-            }`}
-          >
-            <span>{opt.label}</span>
-            {active && (
-              <CheckCircle2 className="w-5 h-5 text-red-400 shrink-0" />
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function GlassSelect({
-  label,
-  value,
-  onChange,
-  options,
-  placeholder,
-  required,
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const current = options.find((o) => o.value === value);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target))
-        setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <FieldLabel required={required}>{label}</FieldLabel>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`${fieldBase} px-3.5 text-left flex items-center justify-between gap-2 cursor-pointer`}
-      >
-        <span
-          className={`truncate ${
-            current ? "text-[15px] text-white" : "text-[15px] text-white/30"
-          }`}
-        >
-          {current ? current.label : placeholder || "Select…"}
+      {required && <span className="text-[#FF453A] ml-1">*</span>}
+      {trailing && (
+        <span className="text-white/50 normal-case font-normal ml-1 tracking-normal">
+          {trailing}
         </span>
-        <ChevronDown
-          className={`w-4 h-4 text-white/40 shrink-0 transition-transform duration-150 ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </button>
-      {open && (
-        <div className="absolute z-30 w-full mt-1.5 backdrop-blur-2xl bg-neutral-900/95 border border-white/[0.08] rounded-xl shadow-2xl shadow-black/60 max-h-60 overflow-y-auto">
-          {options.length === 0 ? (
-            <p className="px-3.5 py-3 text-sm text-white/40">No options</p>
-          ) : (
-            options.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => {
-                  onChange(o.value);
-                  setOpen(false);
-                }}
-                className={`w-full text-left px-3.5 py-3 text-[15px] transition-colors cursor-pointer border-b border-white/[0.04] last:border-0 ${
-                  o.value === value
-                    ? "text-red-400 font-semibold bg-white/[0.02]"
-                    : "text-white/85 hover:bg-white/[0.05]"
-                }`}
-              >
-                {o.label}
-              </button>
-            ))
-          )}
-        </div>
       )}
-    </div>
+    </label>
   );
 }
 
@@ -207,29 +88,57 @@ function AutoSuggestInput({
   onChange,
   suggestions,
   onSelect,
-  placeholder,
   required,
   type = "text",
   inputMode,
   maxLength,
 }) {
   const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState(null);
   const wrapRef = useRef(null);
 
   useEffect(() => {
     const handler = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target))
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
         setOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open && wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect();
+      setDropPos({
+        top: rect.bottom + 6,
+        left: rect.left,
+        width: rect.width,
+        maxHeight: Math.max(
+          160,
+          Math.min(300, window.innerHeight - rect.bottom - 24)
+        ),
+      });
+    }
+  }, [open, suggestions]);
+
   return (
     <div ref={wrapRef} className="relative">
-      <FieldLabel required={required}>{label}</FieldLabel>
-      <div className="relative">
-        {Icon && <Icon className={fieldIcon} />}
+      <div className="flex items-center gap-3 px-4 py-3.5">
+        {Icon && (
+          <Icon className="w-5 h-5 text-white/40 shrink-0" strokeWidth={1.75} />
+        )}
         <input
           type={type}
           inputMode={inputMode}
@@ -240,12 +149,15 @@ function AutoSuggestInput({
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder={placeholder}
-          className={`${fieldBase} ${Icon ? "pl-9" : "pl-3.5"} pr-3.5`}
+          placeholder={`${label}${required ? " *" : ""}`}
+          className="w-full bg-transparent border-0 p-0 text-[17px] leading-tight text-white placeholder-white/45 font-medium focus:outline-none"
         />
       </div>
-      {open && suggestions.length > 0 && (
-        <div className="absolute z-30 w-full mt-1.5 backdrop-blur-2xl bg-neutral-900/95 border border-white/[0.08] rounded-xl shadow-2xl shadow-black/60 max-h-60 overflow-y-auto">
+      {open && suggestions.length > 0 && dropPos && (
+        <div
+          style={dropPos}
+          className="fixed z-[90] bg-[#2C2C2E] border border-white/[0.08] rounded-[16px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.9)] overflow-y-auto backdrop-blur-2xl"
+        >
           {suggestions.map((s, i) => (
             <button
               key={i}
@@ -255,13 +167,13 @@ function AutoSuggestInput({
                 onSelect(s);
                 setOpen(false);
               }}
-              className="w-full text-left px-3.5 py-2.5 hover:bg-white/[0.05] border-b border-white/[0.04] last:border-0 transition-colors cursor-pointer"
+              className="w-full text-left px-4 py-3 hover:bg-white/[0.06] active:bg-white/[0.08] border-b border-white/[0.05] last:border-0 transition-colors cursor-pointer"
             >
-              <p className="text-[15px] font-medium text-white truncate">
+              <p className="text-[16px] font-medium text-white truncate">
                 {s.primary}
               </p>
               {s.secondary && (
-                <p className="text-xs text-white/40 truncate mt-0.5">
+                <p className="text-[13px] text-white/50 truncate mt-0.5">
                   {s.secondary}
                 </p>
               )}
@@ -273,94 +185,333 @@ function AutoSuggestInput({
   );
 }
 
+function GlassSelect({
+  label,
+  icon: Icon,
+  value,
+  onChange,
+  options,
+  required,
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.value === value);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] active:bg-white/[0.04] transition-colors cursor-pointer"
+      >
+        {Icon && (
+          <Icon className="w-5 h-5 text-white/40 shrink-0" strokeWidth={1.75} />
+        )}
+        <span
+          className={`flex-1 min-w-0 text-left truncate text-[17px] leading-tight font-medium ${
+            current ? "text-white" : "text-white/45"
+          }`}
+        >
+          {current ? current.label : `${label}${required ? " *" : ""}`}
+        </span>
+        <ChevronRight
+          className="w-5 h-5 text-white/25 shrink-0"
+          strokeWidth={2}
+        />
+      </button>
+      {open && (
+        <IOSPickerSheet
+          title={label}
+          options={options}
+          value={value}
+          onSelect={(v) => {
+            onChange(v);
+            setOpen(false);
+          }}
+          onClose={() => setOpen(false)}
+          emptyLabel="No options available"
+        />
+      )}
+    </>
+  );
+}
+
 function WorkerMultiSelect({ workers, value, onChange }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target))
-        setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  const selected = workers.filter((w) => value.includes(w.id));
 
   const toggle = (id) => {
     if (value.includes(id)) onChange(value.filter((v) => v !== id));
     else onChange([...value, id]);
   };
 
-  const selected = workers.filter((w) => value.includes(w.id));
+  const hasSelection = selected.length > 0;
 
   return (
-    <div ref={wrapRef} className="relative">
-      <FieldLabel required>
-        Work By
-        <span className="text-white/30 normal-case font-normal ml-1 tracking-normal">
-          (one or more)
-        </span>
-      </FieldLabel>
+    <>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`${fieldBase} px-3.5 min-h-11 h-auto py-2.5 text-left flex items-center gap-2 flex-wrap cursor-pointer`}
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] active:bg-white/[0.04] transition-colors cursor-pointer"
       >
-        <Wrench className="w-4 h-4 text-white/40 shrink-0" />
-        {selected.length === 0 ? (
-          <span className="text-[15px] text-white/30">Select workers…</span>
-        ) : (
-          selected.map((w) => (
-            <span
-              key={w.id}
-              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-600/15 border border-red-500/30 text-red-300"
-            >
-              {w.name}
-            </span>
-          ))
-        )}
-      </button>
-      {open && (
-        <div className="absolute z-30 w-full mt-1.5 backdrop-blur-2xl bg-neutral-900/95 border border-white/[0.08] rounded-xl shadow-2xl shadow-black/60 max-h-60 overflow-y-auto">
-          {workers.length === 0 ? (
-            <p className="px-3.5 py-3 text-sm text-white/40">
-              No workers configured.
-            </p>
-          ) : (
-            workers.map((w) => {
-              const on = value.includes(w.id);
-              return (
-                <button
+        <Wrench className="w-5 h-5 text-white/40 shrink-0" strokeWidth={1.75} />
+        <div className="flex-1 min-w-0">
+          {hasSelection ? (
+            <div className="flex flex-wrap gap-1.5">
+              {selected.map((w) => (
+                <span
                   key={w.id}
-                  type="button"
-                  onClick={() => toggle(w.id)}
-                  className="w-full flex items-center justify-between px-3.5 py-3 hover:bg-white/[0.05] border-b border-white/[0.04] last:border-0 transition-colors cursor-pointer"
+                  className="text-[13px] font-semibold px-2.5 py-1 rounded-lg bg-[#7C5CFF]/15 border border-[#7C5CFF]/30 text-[#A390FF]"
                 >
-                  <span className="text-[15px] text-white">{w.name}</span>
-                  {on && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                </button>
-              );
-            })
+                  {w.name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="block text-[17px] leading-tight text-white/45 font-medium">
+              Work By *
+            </span>
           )}
         </div>
+        <ChevronRight
+          className="w-5 h-5 text-white/25 shrink-0"
+          strokeWidth={2}
+        />
+      </button>
+      {open && (
+        <IOSMultiPickerSheet
+          title="Select Workers"
+          items={workers.map((w) => ({ id: w.id, label: w.name }))}
+          selectedIds={value}
+          onToggle={toggle}
+          onClose={() => setOpen(false)}
+          emptyLabel="No workers available"
+        />
       )}
+    </>
+  );
+}
+
+// ============================================================
+// BOTTOM SHEET PICKERS
+// ============================================================
+
+function SheetShell({ title, onClose, children }) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-end bg-black/60 backdrop-blur-sm animate-in fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="w-full bg-[#1C1C1E] border-t border-white/[0.08] rounded-t-[24px] max-h-[78vh] flex flex-col shadow-[0_-20px_60px_-15px_rgba(0,0,0,0.9)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 bg-white/[0.15] rounded-full mx-auto mt-3" />
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06] shrink-0">
+          <h3 className="text-[17px] font-bold text-white tracking-tight">
+            {title}
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-[#A390FF] text-[16px] font-semibold hover:text-white transition-colors cursor-pointer"
+          >
+            Done
+          </button>
+        </div>
+        <div
+          className="overflow-y-auto flex-1 pb-6"
+          style={{ paddingBottom: "max(24px, env(safe-area-inset-bottom))" }}
+        >
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
 
-function SectionHeader({ icon: Icon, label }) {
+function IOSPickerSheet({
+  title,
+  options,
+  value,
+  onSelect,
+  onClose,
+  emptyLabel,
+}) {
   return (
-    <div className="flex items-center gap-2 pt-1">
-      <div className="p-1.5 rounded-lg bg-red-500/12 border border-red-500/20">
-        <Icon className="w-3.5 h-3.5 text-red-400" />
-      </div>
-      <span className="text-[10.5px] font-semibold text-white/50 uppercase tracking-[0.16em]">
-        {label}
-      </span>
-      <div className="flex-1 h-px bg-gradient-to-r from-white/[0.08] to-transparent" />
+    <SheetShell title={title} onClose={onClose}>
+      {options.length === 0 ? (
+        <p className="p-8 text-center text-[15px] text-white/45">
+          {emptyLabel}
+        </p>
+      ) : (
+        options.map((o) => {
+          const active = o.value === value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => onSelect(o.value)}
+              className={`w-full text-left px-5 py-4 flex items-center justify-between gap-3 border-b border-white/[0.04] last:border-0 transition-colors cursor-pointer ${
+                active ? "bg-[#7C5CFF]/10" : "hover:bg-white/[0.03]"
+              }`}
+            >
+              <span
+                className={`text-[17px] ${
+                  active ? "text-white font-semibold" : "text-white/85"
+                }`}
+              >
+                {o.label}
+              </span>
+              {active && (
+                <div className="w-6 h-6 rounded-full bg-[#7C5CFF] flex items-center justify-center shrink-0">
+                  <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                </div>
+              )}
+            </button>
+          );
+        })
+      )}
+    </SheetShell>
+  );
+}
+
+function IOSMultiPickerSheet({
+  title,
+  items,
+  selectedIds,
+  onToggle,
+  onClose,
+  emptyLabel,
+}) {
+  return (
+    <SheetShell title={title} onClose={onClose}>
+      {items.length === 0 ? (
+        <p className="p-8 text-center text-[15px] text-white/45">
+          {emptyLabel}
+        </p>
+      ) : (
+        items.map((it) => {
+          const on = selectedIds.includes(it.id);
+          return (
+            <button
+              key={it.id}
+              type="button"
+              onClick={() => onToggle(it.id)}
+              className={`w-full text-left px-5 py-4 flex items-center justify-between gap-3 border-b border-white/[0.04] last:border-0 transition-colors cursor-pointer ${
+                on ? "bg-[#7C5CFF]/10" : "hover:bg-white/[0.03]"
+              }`}
+            >
+              <span
+                className={`text-[17px] ${
+                  on ? "text-white font-semibold" : "text-white/85"
+                }`}
+              >
+                {it.label}
+              </span>
+              {on ? (
+                <div className="w-6 h-6 rounded-full bg-[#7C5CFF] flex items-center justify-center shrink-0">
+                  <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                </div>
+              ) : (
+                <div className="w-6 h-6 rounded-full border-2 border-white/20 shrink-0" />
+              )}
+            </button>
+          );
+        })
+      )}
+    </SheetShell>
+  );
+}
+
+// ============================================================
+// CHOICE + STAR RATING
+// ============================================================
+
+function ChoiceButtons({ options, value, onChange }) {
+  return (
+    <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] overflow-hidden divide-y divide-white/[0.05]">
+      {options.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`w-full px-5 py-4 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer ${
+              active ? "bg-[#7C5CFF]/10" : "hover:bg-white/[0.02]"
+            }`}
+          >
+            <span
+              className={`text-[17px] font-medium transition-colors ${
+                active ? "text-white" : "text-white/80"
+              }`}
+            >
+              {opt.label}
+            </span>
+            {active ? (
+              <div className="w-6 h-6 rounded-full bg-[#7C5CFF] flex items-center justify-center shrink-0">
+                <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+              </div>
+            ) : (
+              <div className="w-6 h-6 rounded-full border-2 border-white/15 shrink-0" />
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
+
+function StarRatingDisplay({ value, onChange }) {
+  const RATING_LABELS = ["Poor", "Fair", "Good", "Very Good", "Excellent"];
+  const label = value > 0 ? RATING_LABELS[value - 1] : "Tap a star to rate";
+  const labelColor =
+    value >= 4
+      ? "text-[#30D158]"
+      : value >= 3
+      ? "text-[#FFD60A]"
+      : value > 0
+      ? "text-[#FF6961]"
+      : "text-white/40";
+
+  return (
+    <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[24px] p-6">
+      <div className="flex justify-center gap-1.5 py-3">
+        {[1, 2, 3, 4, 5].map((n) => {
+          const active = value >= n;
+          return (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onChange(n)}
+              className="p-1 transition-transform duration-150 active:scale-90 cursor-pointer"
+              aria-label={`${n} star${n > 1 ? "s" : ""}`}
+            >
+              <Star
+                className={`w-12 h-12 transition-all duration-200 ${
+                  active
+                    ? "fill-[#FFD60A] text-[#FFD60A] drop-shadow-[0_0_16px_rgba(255,214,10,0.5)]"
+                    : "text-white/12"
+                }`}
+              />
+            </button>
+          );
+        })}
+      </div>
+      <div className="text-center mt-3">
+        <p className={`text-[17px] font-bold transition-colors ${labelColor}`}>
+          {label}
+        </p>
+        <p className="text-[13px] text-white/40 mt-0.5 tabular-nums">
+          {value > 0 ? `${value} of 5` : "No rating yet"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 
 export default function FeedbackFlow({
   companyId,
@@ -469,7 +620,6 @@ export default function FeedbackFlow({
     }
   }, [view, companyId, currentUser?.id]);
 
-  // Autosave: create new or update existing draft
   useEffect(() => {
     if (!draftLoaded || view !== "flow") return;
     const hasContent =
@@ -508,7 +658,7 @@ export default function FeedbackFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, step, draftLoaded, view, companyId, currentUser?.id, draftId]);
 
-  // Autosuggest effects
+  // Autosuggests
   useEffect(() => {
     const q = form.name.trim();
     if (q.length < 2) return setNameSuggestions([]);
@@ -760,7 +910,6 @@ export default function FeedbackFlow({
         if (wErr) throw wErr;
       }
 
-      // Only clear THIS draft (the one being submitted)
       if (draftId) {
         await supabase.from("fb_drafts").delete().eq("id", draftId);
       }
@@ -801,9 +950,6 @@ export default function FeedbackFlow({
     triggerToast("Pending removed");
   };
 
-  // Shell back-arrow behavior:
-  //  - on home view: exits to main panel
-  //  - elsewhere: returns to the feedback home view
   const handleHeaderBack = () => {
     if (view === "home") {
       if (onExit) onExit();
@@ -812,75 +958,65 @@ export default function FeedbackFlow({
     }
   };
 
-  // ---------- render ----------
+  // ---------- HOME ----------
 
   if (view === "home") {
     return (
       <Shell
         title={companyName}
-        subtitle="Customer Feedback"
+        subtitle="Feedback"
         onLogout={onLogout}
         onBack={handleHeaderBack}
       >
         <div className="space-y-5">
-          {/* Today card */}
-          <div className="relative rounded-2xl overflow-hidden bg-white/[0.035] border border-white/[0.08] backdrop-blur-xl p-5">
-            <div className="absolute -top-16 -right-16 w-40 h-40 bg-red-600/15 rounded-full blur-3xl pointer-events-none" />
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-semibold text-red-300/90 uppercase tracking-[0.18em]">
-                  Today's Feedback
-                </p>
-                <p className="text-5xl font-black text-white mt-2 tabular-nums leading-none">
-                  {todayCount}
-                </p>
-                <p className="text-xs text-white/40 mt-2">
-                  recorded by you today
-                </p>
-              </div>
-              <div className="p-3 rounded-xl bg-white/[0.05] border border-white/[0.08]">
-                <Sparkles className="w-6 h-6 text-red-300" />
-              </div>
+          <div className="relative rounded-[24px] overflow-hidden bg-[#1C1C1E] border border-white/[0.06] p-6">
+            <div className="absolute -top-20 -right-20 w-48 h-48 bg-[#7C5CFF]/20 rounded-full blur-3xl pointer-events-none" />
+            <div className="relative">
+              <p className="text-[11px] font-bold text-[#A390FF] uppercase tracking-[0.2em]">
+                Today
+              </p>
+              <p className="text-6xl font-black text-white mt-3 tabular-nums leading-none">
+                {todayCount}
+              </p>
+              <p className="text-[14px] text-white/50 mt-2">
+                feedbacks recorded by you
+              </p>
             </div>
           </div>
 
-          {/* New Feedback — always visible */}
           <button
             type="button"
             onClick={startNewFeedback}
-            className="w-full p-5 rounded-2xl bg-gradient-to-br from-red-600 to-red-700 border border-red-500/40 flex items-center justify-between transition-all active:scale-[0.98] shadow-[0_12px_32px_-12px_rgba(220,38,38,0.55)] cursor-pointer"
+            className="w-full p-5 rounded-[24px] border border-[#7C5CFF]/40 flex items-center justify-between transition-all active:scale-[0.98] cursor-pointer bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] text-white shadow-[0_4px_14px_-6px_rgba(124,92,255,0.35)]"
           >
             <div className="text-left">
-              <p className="text-[10px] font-semibold text-red-100/90 uppercase tracking-[0.18em]">
+              <p className="text-[11px] font-bold text-white/85 uppercase tracking-[0.18em]">
                 Start
               </p>
-              <p className="text-xl font-black text-white mt-0.5">
+              <p className="text-[22px] font-black text-white mt-0.5">
                 New Feedback
               </p>
-              <p className="text-xs text-red-100/70 mt-1">
+              <p className="text-[13px] text-white/85 mt-1">
                 12 quick questions · ~3 min
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-white/[0.12] border border-white/[0.15]">
-              <ArrowRight className="w-5 h-5 text-white" />
+            <div className="w-12 h-12 rounded-full bg-white/[0.18] border border-white/[0.24] flex items-center justify-center">
+              <ArrowRight className="w-6 h-6 text-white" strokeWidth={2.5} />
             </div>
           </button>
 
-          {/* Pending drafts */}
           {drafts.length > 0 && (
             <div className="space-y-2.5 pt-1">
-              <div className="flex items-center justify-between px-1">
-                <p className="text-[10px] font-bold text-amber-300/90 uppercase tracking-[0.2em]">
-                  Pending · {drafts.length}
-                </p>
-              </div>
+              <p className="text-[11px] font-bold text-[#FF9F0A] uppercase tracking-[0.2em] px-1">
+                Pending · {drafts.length}
+              </p>
               {drafts.map((d) => {
                 const name = d.form_data?.name?.trim();
                 const sub = name || d.form_data?.mobile || "Untitled";
                 return (
                   <div
                     key={d.id}
-                    className="relative rounded-2xl bg-gradient-to-br from-amber-600/12 to-amber-500/5 border border-amber-500/30 flex items-stretch overflow-hidden"
+                    className="relative rounded-[18px] bg-[#FF9F0A]/[0.08] border border-[#FF9F0A]/25 flex items-stretch overflow-hidden"
                   >
                     <button
                       type="button"
@@ -888,25 +1024,25 @@ export default function FeedbackFlow({
                       className="flex-1 p-4 flex items-center justify-between gap-3 text-left transition-all active:scale-[0.99] cursor-pointer min-w-0"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/25 shrink-0">
-                          <Clock className="w-5 h-5 text-amber-300" />
+                        <div className="w-11 h-11 rounded-[14px] bg-[#FF9F0A]/15 border border-[#FF9F0A]/25 flex items-center justify-center shrink-0">
+                          <Clock className="w-5 h-5 text-[#FF9F0A]" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[15px] font-bold text-white truncate">
+                          <p className="text-[16px] font-bold text-white truncate">
                             {sub}
                           </p>
-                          <p className="text-xs text-white/50 mt-0.5 truncate">
+                          <p className="text-[13px] text-white/50 mt-0.5 truncate">
                             Step {d.current_step} of {TOTAL_STEPS}
                             {d.updated_at ? ` · ${relTime(d.updated_at)}` : ""}
                           </p>
                         </div>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-amber-300 shrink-0" />
+                      <ChevronRight className="w-5 h-5 text-[#FF9F0A] shrink-0" />
                     </button>
                     <button
                       type="button"
                       onClick={(e) => removeDraft(d.id, e)}
-                      className="px-3 flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors cursor-pointer border-l border-amber-500/20"
+                      className="px-3 flex items-center justify-center text-white/40 hover:text-[#FF6961] hover:bg-[#FF453A]/[0.08] transition-colors cursor-pointer border-l border-[#FF9F0A]/20"
                       aria-label="Remove pending"
                     >
                       <X className="w-4 h-4" />
@@ -921,35 +1057,42 @@ export default function FeedbackFlow({
     );
   }
 
+  // ---------- THANKS ----------
+
   if (view === "thanks") {
     return (
       <Shell
         title={companyName}
-        subtitle="Feedback complete"
+        subtitle="Complete"
         onLogout={onLogout}
         onBack={handleHeaderBack}
       >
-        <div className="flex flex-col items-center justify-center text-center py-8 space-y-6">
-          <div className="p-5 rounded-full bg-emerald-500/10 border border-emerald-400/25">
-            <CheckCircle2 className="w-14 h-14 text-emerald-400" />
+        <div className="flex flex-col items-center justify-center text-center py-10 space-y-7">
+          <div className="relative">
+            <div className="absolute inset-0 bg-[#30D158]/25 rounded-full blur-2xl" />
+            <div className="relative w-24 h-24 rounded-full bg-[#30D158]/10 border border-[#30D158]/30 flex items-center justify-center">
+              <CheckCircle2 className="w-14 h-14 text-[#30D158]" />
+            </div>
           </div>
           <div>
-            <h2 className="text-2xl font-black text-white">شکریہ!</h2>
-            <p className="text-sm text-white/55 mt-2 max-w-xs leading-relaxed">
+            <h2 className="text-[28px] font-black text-white tracking-tight">
+              شکریہ!
+            </h2>
+            <p className="text-[15px] text-white/55 mt-3 max-w-xs leading-relaxed">
               آپ کا فیڈبیک ہمارے لیے بہت اہم ہے۔
             </p>
           </div>
           <button
             type="button"
             onClick={startNewFeedback}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-br from-red-600 to-red-700 border border-red-500/40 font-bold text-white text-[15px] shadow-[0_12px_32px_-12px_rgba(220,38,38,0.55)] transition-all active:scale-[0.98] cursor-pointer"
+            className={`w-full py-4 rounded-[16px] border border-[#7C5CFF]/40 font-semibold text-white text-[16px] transition-all active:scale-[0.98] cursor-pointer ${btnPrimary}`}
           >
-            + New Feedback
+            New Feedback
           </button>
           <button
             type="button"
             onClick={() => setView("home")}
-            className="text-xs font-semibold text-white/40 hover:text-white/80 transition-colors cursor-pointer"
+            className="text-[14px] font-semibold text-white/40 hover:text-white/80 transition-colors cursor-pointer"
           >
             Back to Home
           </button>
@@ -958,17 +1101,17 @@ export default function FeedbackFlow({
     );
   }
 
+  // ---------- FLOW ----------
+
   return (
     <Shell
       title={companyName}
-      subtitle="Customer Feedback"
+      subtitle={`Step ${step} of ${TOTAL_STEPS}`}
       onLogout={onLogout}
       onBack={handleHeaderBack}
       progress={(step / TOTAL_STEPS) * 100}
-      step={step}
-      total={TOTAL_STEPS}
     >
-      <div className="space-y-5 pb-4">
+      <div className="space-y-6 pb-4">
         {step === 1 && (
           <StepCustomer
             form={form}
@@ -995,9 +1138,9 @@ export default function FeedbackFlow({
               value={form.attention}
               onChange={(v) => setField("attention", v)}
               options={[
-                { value: "yes", label: "جی ہاں (Yes)" },
-                { value: "partial", label: "کچھ حد تک (Partially)" },
-                { value: "no", label: "نہیں (No)" },
+                { value: "yes", label: "جی ہاں" },
+                { value: "partial", label: "کچھ حد تک" },
+                { value: "no", label: "نہیں" },
               ]}
             />
           </StepQuestion>
@@ -1012,8 +1155,8 @@ export default function FeedbackFlow({
               value={form.computerDiagnosis}
               onChange={(v) => setField("computerDiagnosis", v)}
               options={[
-                { value: "yes", label: "جی ہاں (Yes)" },
-                { value: "no", label: "نہیں (No)" },
+                { value: "yes", label: "جی ہاں" },
+                { value: "no", label: "نہیں" },
               ]}
             />
           </StepQuestion>
@@ -1028,8 +1171,8 @@ export default function FeedbackFlow({
               value={form.computerRpmCheck}
               onChange={(v) => setField("computerRpmCheck", v)}
               options={[
-                { value: "yes", label: "جی ہاں (Yes)" },
-                { value: "no", label: "نہیں (No)" },
+                { value: "yes", label: "جی ہاں" },
+                { value: "no", label: "نہیں" },
               ]}
             />
           </StepQuestion>
@@ -1093,9 +1236,9 @@ export default function FeedbackFlow({
               value={form.recommendation}
               onChange={(v) => setField("recommendation", v)}
               options={[
-                { value: "must", label: "ضرور (Definitely)" },
-                { value: "maybe", label: "شاید (Maybe)" },
-                { value: "no", label: "نہیں (No)" },
+                { value: "must", label: "ضرور" },
+                { value: "maybe", label: "شاید" },
+                { value: "no", label: "نہیں" },
               ]}
             />
           </StepQuestion>
@@ -1106,17 +1249,16 @@ export default function FeedbackFlow({
             title="رائے، شکایت یا مشورہ"
             hint="Optional — leave blank if none"
           >
-            <div className="relative">
-              <MessageSquare className="w-4 h-4 text-white/40 absolute left-3 top-3.5 pointer-events-none" />
+            <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[24px] p-5">
               <textarea
                 value={form.comment}
                 onChange={(e) => setField("comment", e.target.value)}
                 placeholder="مثال: قیمت کا مسئلہ / انتظار کا مسئلہ / کوئی تجویز…"
                 rows={6}
                 maxLength={1000}
-                className="w-full rounded-xl bg-white/[0.035] border border-white/[0.08] text-[15px] text-white placeholder-white/30 backdrop-blur-xl focus:outline-none focus:bg-white/[0.05] focus:border-red-500/60 focus:ring-2 focus:ring-red-500/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors pl-9 pr-3.5 py-3 resize-none text-center"
+                className="w-full bg-transparent border-0 p-0 text-[17px] leading-relaxed text-white placeholder-white/25 font-medium focus:outline-none resize-none"
               />
-              <p className="text-[11px] text-white/30 text-right mt-1.5">
+              <p className="text-[12px] text-white/35 text-right mt-2 tabular-nums">
                 {form.comment.length}/1000
               </p>
             </div>
@@ -1127,31 +1269,31 @@ export default function FeedbackFlow({
           <button
             type="button"
             onClick={handleBack}
-            className="flex-1 h-11 rounded-xl bg-white/[0.035] hover:bg-white/[0.06] border border-white/[0.08] font-bold text-white/80 text-[15px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            className="flex-1 h-12 rounded-[14px] bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] font-semibold text-white/85 text-[16px] flex items-center justify-center gap-1.5 transition-colors cursor-pointer active:scale-[0.98]"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ChevronLeft className="w-5 h-5" strokeWidth={2.5} />
             Back
           </button>
           <button
             type="button"
             onClick={handleNext}
             disabled={!stepValid() || submitting}
-            className="flex-[2] h-11 rounded-xl bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 disabled:from-neutral-800 disabled:to-neutral-800 disabled:text-neutral-600 disabled:cursor-not-allowed text-white font-bold text-[15px] flex items-center justify-center gap-1.5 transition-colors border border-red-500/40 disabled:border-transparent shadow-[0_10px_26px_-10px_rgba(220,38,38,0.6)] disabled:shadow-none cursor-pointer"
+            className={`flex-[2] h-12 rounded-[14px] disabled:bg-white/[0.06] disabled:text-white/30 disabled:cursor-not-allowed disabled:shadow-none text-white font-semibold text-[16px] flex items-center justify-center gap-1.5 transition-all border border-[#7C5CFF]/40 disabled:border-transparent cursor-pointer active:scale-[0.98] ${btnPrimary}`}
           >
             {submitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-5 h-5 animate-spin" />
                 Saving…
               </>
             ) : step === TOTAL_STEPS ? (
               <>
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-5 h-5" />
                 Submit
               </>
             ) : (
               <>
                 Next
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-5 h-5" strokeWidth={2.5} />
               </>
             )}
           </button>
@@ -1159,20 +1301,20 @@ export default function FeedbackFlow({
       </div>
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[90vw]">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] max-w-[90vw]">
           <div
-            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-2xl border ${
+            className={`flex items-center gap-2.5 px-4 py-3 rounded-[14px] shadow-2xl backdrop-blur-2xl border ${
               toast.type === "error"
-                ? "bg-red-950/70 border-red-800/60 text-red-200"
-                : "bg-neutral-900/85 border-white/[0.10] text-white"
+                ? "bg-[#FF453A]/15 border-[#FF453A]/30 text-[#FF6961]"
+                : "bg-[#1C1C1E]/90 border-white/[0.10] text-white"
             }`}
           >
             {toast.type === "error" ? (
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-[#FF453A] shrink-0" />
             ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-[#30D158] shrink-0" />
             )}
-            <span className="text-sm font-medium">{toast.message}</span>
+            <span className="text-[15px] font-medium">{toast.message}</span>
           </div>
         </div>
       )}
@@ -1180,43 +1322,31 @@ export default function FeedbackFlow({
   );
 }
 
-// -------- shell --------
+// ============================================================
+// SHELL
+// ============================================================
 
-function Shell({
-  title,
-  subtitle,
-  onLogout,
-  onBack,
-  progress,
-  step,
-  total,
-  children,
-}) {
-  const segments = useMemo(
-    () => (total ? Array.from({ length: total }) : []),
-    [total]
-  );
-
+function Shell({ title, subtitle, onLogout, onBack, progress, children }) {
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex flex-col relative overflow-hidden">
-      <div className="pointer-events-none absolute -top-40 -right-40 w-[380px] h-[380px] bg-red-600/[0.08] rounded-full blur-[100px]" />
+    <div className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden">
+      <div className="pointer-events-none absolute -top-40 -right-40 w-[400px] h-[400px] bg-[#7C5CFF]/[0.08] rounded-full blur-[120px]" />
 
-      <header className="sticky top-0 z-20 backdrop-blur-2xl bg-neutral-950/75 border-b border-white/[0.06]">
-        <div className="h-16 px-3 flex items-center justify-between max-w-lg mx-auto w-full gap-2">
+      <header className="sticky top-0 z-20 backdrop-blur-2xl bg-black/70 border-b border-white/[0.05]">
+        <div className="h-14 px-2 flex items-center justify-between max-w-lg mx-auto w-full">
           <button
             type="button"
             onClick={onBack || (() => {})}
-            className="p-2.5 rounded-xl text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0 cursor-pointer"
+            className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0 cursor-pointer"
             aria-label="Back"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ChevronLeft className="w-6 h-6" strokeWidth={2.25} />
           </button>
 
-          <div className="flex-1 text-center min-w-0">
-            <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] truncate">
+          <div className="flex-1 text-center min-w-0 px-2">
+            <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.18em] truncate">
               {title}
             </p>
-            <p className="text-[14px] font-bold text-white truncate mt-0.5">
+            <p className="text-[13px] font-semibold text-white truncate mt-0.5">
               {subtitle}
             </p>
           </div>
@@ -1224,29 +1354,20 @@ function Shell({
           <button
             type="button"
             onClick={onLogout}
-            className="p-2.5 rounded-xl text-white/45 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors shrink-0 cursor-pointer"
+            className="p-2 rounded-xl text-white/45 hover:text-[#FF6961] hover:bg-[#FF453A]/[0.08] transition-colors shrink-0 cursor-pointer"
             aria-label="Logout"
           >
             <LogOut className="w-5 h-5" />
           </button>
         </div>
 
-        {typeof progress === "number" && segments.length > 0 && (
+        {typeof progress === "number" && (
           <div className="max-w-lg mx-auto px-4 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex-1 flex gap-1">
-                {segments.map((_, i) => (
-                  <div
-                    key={i}
-                    className={`flex-1 h-1 rounded-full transition-colors duration-300 ${
-                      i < step ? "bg-red-500" : "bg-white/[0.07]"
-                    }`}
-                  />
-                ))}
-              </div>
-              <span className="text-[10px] font-bold text-white/55 tabular-nums shrink-0">
-                {step}/{total}
-              </span>
+            <div className="h-[3px] bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#8B6EFF] to-[#6B4FE8] transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
             </div>
           </div>
         )}
@@ -1259,17 +1380,19 @@ function Shell({
   );
 }
 
-// -------- step wrappers --------
+// ============================================================
+// STEP WRAPPERS
+// ============================================================
 
 function StepQuestion({ title, hint, children }) {
   return (
-    <div className="space-y-5">
-      <div className="space-y-2 text-center">
-        <h2 className="text-[20px] leading-snug font-black text-white tracking-tight">
+    <div className="space-y-6">
+      <div className="space-y-2.5 text-center pt-2">
+        <h2 className="text-[22px] leading-snug font-bold text-white tracking-tight">
           {title}
         </h2>
         {hint && (
-          <p className="text-[10.5px] font-semibold text-white/40 uppercase tracking-[0.16em]">
+          <p className="text-[12px] font-semibold text-white/40 uppercase tracking-[0.16em]">
             {hint}
           </p>
         )}
@@ -1282,22 +1405,14 @@ function StepQuestion({ title, hint, children }) {
 function StepRating({ title, hint, value, onChange }) {
   return (
     <StepQuestion title={title} hint={hint}>
-      <div className="rounded-2xl bg-white/[0.03] border border-white/[0.07] backdrop-blur-xl p-3.5">
-        <StarRating value={value} onChange={onChange} />
-        <div className="flex justify-center pt-1 pb-1">
-          <div className="px-4 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08]">
-            <span className="text-xl font-black text-yellow-400 tabular-nums">
-              {value > 0 ? `${value}.0` : "—"}
-            </span>
-            <span className="text-xs font-bold text-white/40 ml-1.5">/ 5</span>
-          </div>
-        </div>
-      </div>
+      <StarRatingDisplay value={value} onChange={onChange} />
     </StepQuestion>
   );
 }
 
-// -------- step 1 --------
+// ============================================================
+// STEP 1 — CUSTOMER & JOB DETAILS (iOS grouped form)
+// ============================================================
 
 function StepCustomer({
   form,
@@ -1327,123 +1442,127 @@ function StepCustomer({
 
   return (
     <div className="space-y-6">
-      <h2 className="text-[20px] font-black text-white tracking-tight text-center">
-        Customer & Job Details
-      </h2>
+      <div className="text-center space-y-2 pt-2">
+        <h2 className="text-[24px] font-bold text-white tracking-tight">
+          Customer Details
+        </h2>
+        <p className="text-[13px] text-white/45">
+          Fill in the customer and job information
+        </p>
+      </div>
 
-      <div className="space-y-3.5">
-        <SectionHeader icon={User} label="Customer" />
-
-        <AutoSuggestInput
-          label="Customer Name"
-          icon={User}
-          required
-          value={form.name}
-          onChange={(v) => setField("name", v)}
-          suggestions={nameSuggestions}
-          onSelect={onPickName}
-          placeholder="e.g. Ahmed Raza"
-        />
-
-        <AutoSuggestInput
-          label="Mobile Number"
-          icon={Phone}
-          required
-          type="tel"
-          inputMode="numeric"
-          maxLength={13}
-          value={form.mobile}
-          onChange={(v) => setField("mobile", v.replace(/\D/g, ""))}
-          suggestions={mobileSuggestions}
-          onSelect={onPickMobile}
-          placeholder="e.g. 03001234567"
-        />
-
-        <GlassSelect
-          label="Area"
-          value={form.areaId}
-          onChange={(v) => setField("areaId", v)}
-          options={areaOptions}
-          placeholder="Select area"
-          required
-        />
-
-        {showOtherArea && (
-          <div>
-            <FieldLabel>Specify Area</FieldLabel>
-            <div className="relative">
-              <MapPin className={fieldIcon} />
+      {/* Customer group */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold text-white/40 uppercase tracking-[0.16em] px-1">
+          Customer
+        </p>
+        <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[18px] overflow-hidden divide-y divide-white/[0.05]">
+          <AutoSuggestInput
+            label="Full Name"
+            icon={User}
+            required
+            value={form.name}
+            onChange={(v) => setField("name", v)}
+            suggestions={nameSuggestions}
+            onSelect={onPickName}
+          />
+          <AutoSuggestInput
+            label="Mobile Number"
+            icon={Phone}
+            required
+            type="tel"
+            inputMode="numeric"
+            maxLength={13}
+            value={form.mobile}
+            onChange={(v) => setField("mobile", v.replace(/\D/g, ""))}
+            suggestions={mobileSuggestions}
+            onSelect={onPickMobile}
+          />
+          <GlassSelect
+            label="Area"
+            icon={MapPin}
+            required
+            value={form.areaId}
+            onChange={(v) => setField("areaId", v)}
+            options={areaOptions}
+          />
+          {showOtherArea && (
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              <MapPin
+                className="w-5 h-5 text-white/40 shrink-0"
+                strokeWidth={1.75}
+              />
               <input
                 type="text"
                 value={form.areaOther}
                 onChange={(e) => setField("areaOther", e.target.value)}
-                placeholder="Type area name"
-                className={`${fieldBase} pl-9 pr-3.5`}
+                placeholder="Specify Area"
+                className="w-full bg-transparent border-0 p-0 text-[17px] leading-tight text-white placeholder-white/45 font-medium focus:outline-none"
               />
             </div>
-          </div>
-        )}
-
-        <div>
-          <FieldLabel>
-            Full Address
-            <span className="text-white/30 normal-case font-normal ml-1 tracking-normal">
-              (optional)
-            </span>
-          </FieldLabel>
-          <div className="relative">
-            <MapPin className={fieldIcon} />
+          )}
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            <Home
+              className="w-5 h-5 text-white/40 shrink-0"
+              strokeWidth={1.75}
+            />
             <input
               type="text"
               value={form.address}
               onChange={(e) => setField("address", e.target.value)}
-              placeholder="House, street, landmark"
-              className={`${fieldBase} pl-9 pr-3.5`}
+              placeholder="Address (Optional)"
+              className="w-full bg-transparent border-0 p-0 text-[17px] leading-tight text-white placeholder-white/45 font-medium focus:outline-none"
             />
           </div>
         </div>
       </div>
 
-      <div className="space-y-3.5">
-        <SectionHeader icon={Bike} label="Bike" />
-
-        <AutoSuggestInput
-          label="Bike Registration No."
-          icon={Bike}
-          required
-          value={form.bikeRegNo}
-          onChange={(v) => setField("bikeRegNo", v.toUpperCase())}
-          suggestions={bikeSuggestions}
-          onSelect={onPickBike}
-          placeholder="e.g. LEA-1234"
-        />
-
-        <GlassSelect
-          label="Bike Model"
-          value={form.bikeModelId}
-          onChange={(v) => setField("bikeModelId", v)}
-          options={bikeModelOptions}
-          placeholder="Select model"
-          required
-        />
-
-        <GlassSelect
-          label="Model Year"
-          value={form.bikeYear}
-          onChange={(v) => setField("bikeYear", v)}
-          options={yearOptions}
-          placeholder="Select year"
-          required
-        />
+      {/* Bike group */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold text-white/40 uppercase tracking-[0.16em] px-1">
+          Bike
+        </p>
+        <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[18px] overflow-hidden divide-y divide-white/[0.05]">
+          <AutoSuggestInput
+            label="Registration No."
+            icon={Bike}
+            required
+            value={form.bikeRegNo}
+            onChange={(v) => setField("bikeRegNo", v.toUpperCase())}
+            suggestions={bikeSuggestions}
+            onSelect={onPickBike}
+          />
+          <GlassSelect
+            label="Model"
+            icon={Bike}
+            required
+            value={form.bikeModelId}
+            onChange={(v) => setField("bikeModelId", v)}
+            options={bikeModelOptions}
+          />
+          <GlassSelect
+            label="Model Year"
+            icon={Calendar}
+            required
+            value={form.bikeYear}
+            onChange={(v) => setField("bikeYear", v)}
+            options={yearOptions}
+          />
+        </div>
       </div>
 
-      <div className="space-y-3.5">
-        <SectionHeader icon={Wrench} label="Work Details" />
-        <WorkerMultiSelect
-          workers={workers}
-          value={form.workers}
-          onChange={(v) => setField("workers", v)}
-        />
+      {/* Work Details group */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold text-white/40 uppercase tracking-[0.16em] px-1">
+          Work Details
+        </p>
+        <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[18px] overflow-hidden">
+          <WorkerMultiSelect
+            workers={workers}
+            value={form.workers}
+            onChange={(v) => setField("workers", v)}
+          />
+        </div>
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
   BarChart3,
   Clock,
   Users,
+  ChevronRight,
 } from "lucide-react";
 
 export default function LoginPage({ onLoginSuccess }) {
@@ -21,7 +22,7 @@ export default function LoginPage({ onLoginSuccess }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState(false);
-  const [isFetching, setIsFetching] = useState(true); // for loading state
+  const [isFetching, setIsFetching] = useState(true);
 
   useEffect(() => {
     async function fetchCompanies() {
@@ -49,10 +50,6 @@ export default function LoginPage({ onLoginSuccess }) {
     }
     fetchCompanies();
   }, []);
-
-  const handleSelectCompany = (comp) => {
-    setSelectedCompany(comp);
-  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -95,7 +92,7 @@ export default function LoginPage({ onLoginSuccess }) {
       }
 
       onLoginSuccess({
-        user: user,
+        user,
         companyId: selectedCompany.id,
         companyName: selectedCompany.name,
         isAdmin: user.is_admin,
@@ -109,13 +106,15 @@ export default function LoginPage({ onLoginSuccess }) {
 
   if (fetchError) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center p-4 bg-neutral-950">
-        <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-8 text-center space-y-4 shadow-xl">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
-          <p className="text-sm text-neutral-300">{error}</p>
+      <div className="min-h-[100dvh] w-full flex items-center justify-center p-6 bg-black">
+        <div className="w-full max-w-sm bg-[#1C1C1E] border border-white/[0.08] rounded-[20px] p-8 text-center space-y-5">
+          <div className="w-14 h-14 mx-auto rounded-[14px] bg-[#FF453A]/10 border border-[#FF453A]/25 flex items-center justify-center">
+            <AlertCircle className="w-7 h-7 text-[#FF453A]" />
+          </div>
+          <p className="text-[16px] text-white/80">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="bg-red-600 hover:bg-red-700 text-white font-medium px-6 py-2.5 rounded-xl text-sm transition-all"
+            className="w-full h-12 bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] text-white font-semibold rounded-[14px] transition-colors active:scale-[0.98] text-[16px]"
           >
             Retry
           </button>
@@ -125,51 +124,72 @@ export default function LoginPage({ onLoginSuccess }) {
   }
 
   return (
-    <div className="min-h-[100dvh] w-full bg-neutral-950 flex flex-col lg:flex-row">
-      {/* LEFT: Login Form – modern, clean, no glass */}
-      <div className="w-full lg:w-1/2 flex-1 flex items-center justify-center p-4 sm:p-6 relative overflow-y-auto">
-        <div className="w-full max-w-md space-y-5 sm:space-y-6 py-6">
+    <div className="min-h-[100dvh] w-full bg-black flex flex-col lg:flex-row">
+      {/* FORM COLUMN */}
+      <div className="w-full lg:w-1/2 flex-1 flex items-center justify-center p-6 relative overflow-y-auto">
+        <div className="w-full max-w-sm space-y-8 py-4">
           {/* Brand */}
-          <div className="flex items-center space-x-3 my-2 sm:my-6">
-            <div className="p-2.5 bg-red-600/10 rounded-xl text-red-500 shrink-0">
-              <ShieldCheck className="w-6 h-6" />
+          <div className="flex flex-col items-center text-center space-y-3">
+            <div className="w-16 h-16 rounded-[18px] bg-[#1C1C1E] border border-white/[0.08] flex items-center justify-center">
+              <ShieldCheck className="w-8 h-8 text-[#7C5CFF]" />
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl font-bold text-white">
-                HONDA Portal
+              <h1 className="text-[26px] sm:text-[22px] font-bold tracking-tight text-white">
+                Welcome back
               </h1>
-              <p className="text-xs text-neutral-400">Secure sign‑in</p>
+              <p className="text-[15px] sm:text-[13px] text-white/50 mt-1">
+                Sign in to continue to HONDA Portal
+              </p>
             </div>
           </div>
 
-          {/* Company Selection */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center space-x-2">
-              <Building2 className="w-4 h-4 text-red-500" />
-              <span>Company</span>
-            </label>
-
+          {/* Company picker */}
+          <div className="space-y-2.5">
+            <p className="text-[12px] sm:text-[11px] font-semibold text-white/40 uppercase tracking-[0.14em] px-1">
+              Company
+            </p>
             {isFetching ? (
               <div className="flex items-center justify-center py-6">
-                <Loader2 className="w-6 h-6 text-red-500 animate-spin" />
+                <Loader2 className="w-5 h-5 text-white/40 animate-spin" />
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 bg-neutral-900/60 p-1 rounded-xl border border-neutral-800">
+              <div className="bg-white/[0.03] border border-white/[0.08] rounded-[14px] overflow-hidden divide-y divide-white/[0.05]">
                 {companies.map((comp) => {
                   const active = selectedCompany?.id === comp.id;
                   return (
                     <button
                       key={comp.id}
                       type="button"
-                      onClick={() => handleSelectCompany(comp)}
-                      className={`py-2.5 px-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center space-x-1.5 border ${
-                        active
-                          ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-950/40"
-                          : "border-transparent text-neutral-400 hover:text-white hover:bg-neutral-800/50"
-                      }`}
+                      onClick={() => setSelectedCompany(comp)}
+                      className="w-full px-4 py-4 sm:py-3.5 flex items-center justify-between text-left transition-colors hover:bg-white/[0.03] active:bg-white/[0.06]"
                     >
-                      {active && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-                      <span className="truncate">{comp.name}</span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`w-10 h-10 sm:w-9 sm:h-9 rounded-[10px] flex items-center justify-center shrink-0 ${
+                            active
+                              ? "bg-[#7C5CFF]/15 border border-[#7C5CFF]/30"
+                              : "bg-white/[0.05] border border-white/[0.08]"
+                          }`}
+                        >
+                          <Building2
+                            className={`w-[18px] h-[18px] ${
+                              active ? "text-[#7C5CFF]" : "text-white/40"
+                            }`}
+                          />
+                        </div>
+                        <span
+                          className={`text-[16px] sm:text-[15px] font-medium truncate ${
+                            active ? "text-white" : "text-white/70"
+                          }`}
+                        >
+                          {comp.name}
+                        </span>
+                      </div>
+                      {active ? (
+                        <CheckCircle2 className="w-5 h-5 text-[#7C5CFF] shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-5 h-5 text-white/20 shrink-0" />
+                      )}
                     </button>
                   );
                 })}
@@ -177,134 +197,118 @@ export default function LoginPage({ onLoginSuccess }) {
             )}
           </div>
 
-          {/* Login Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
-                Username
-              </label>
+          {/* Credentials */}
+          <form onSubmit={handleLogin} className="space-y-3">
+            <div className="bg-white/[0.03] border border-white/[0.08] rounded-[14px] overflow-hidden divide-y divide-white/[0.05]">
               <div className="relative">
-                <User className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <User className="w-[18px] h-[18px] text-white/40 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your username"
-                  className="w-full h-11 bg-neutral-900/80 border border-neutral-800 rounded-xl pl-10 pr-4 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
+                  placeholder="Username"
+                  className="w-full h-[54px] bg-transparent pl-11 pr-4 text-[16px] text-white placeholder-white/30 focus:outline-none"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-neutral-400 mb-1.5">
-                Password
-              </label>
               <div className="relative">
-                <KeyRound className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <KeyRound className="w-[18px] h-[18px] text-white/40 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full h-11 bg-neutral-900/80 border border-neutral-800 rounded-xl pl-10 pr-4 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
+                  placeholder="Password"
+                  className="w-full h-[54px] bg-transparent pl-11 pr-4 text-[16px] text-white placeholder-white/30 focus:outline-none"
                 />
               </div>
             </div>
 
             {error && (
-              <div className="p-3 bg-red-950/30 border border-red-800/50 rounded-xl flex items-center gap-2.5 text-xs text-red-400">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
+              <div className="flex items-start gap-2.5 px-4 py-3 bg-[#FF453A]/10 border border-[#FF453A]/25 rounded-[14px]">
+                <AlertCircle className="w-4 h-4 text-[#FF453A] shrink-0 mt-0.5" />
+                <span className="text-[14px] sm:text-[13px] text-[#FF6961]">
+                  {error}
+                </span>
               </div>
             )}
 
             <button
               type="submit"
               disabled={loading || !selectedCompany}
-              className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-all duration-200 text-sm shadow-lg shadow-red-950/40 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+              className="w-full h-[52px] bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] disabled:bg-white/[0.06] disabled:text-white/30 text-white font-semibold rounded-[14px] text-[16px] transition-all disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-2 mt-1"
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Signing in…</span>
+                  Signing in…
                 </>
               ) : (
-                <span>
-                  {selectedCompany
-                    ? `Sign in to ${selectedCompany.name}`
-                    : "Select a company"}
-                </span>
+                "Continue"
               )}
             </button>
           </form>
 
-          <p className="text-center text-[15px] text-neutral-500">
-            Protected · Enterprise‑grade security
+          <p className="text-center text-[12px] text-white/30">
+            Protected · Enterprise-grade security
           </p>
         </div>
       </div>
 
-      {/* RIGHT: Hero / Branding – updated copy */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-neutral-900 via-neutral-950 to-red-950/20 relative overflow-hidden items-center justify-center p-12">
-        {/* Abstract shapes */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-10 left-10 w-64 h-64 bg-red-600 rounded-full blur-3xl" />
-          <div className="absolute bottom-10 right-10 w-80 h-80 bg-red-600 rounded-full blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-red-500/20 rounded-full blur-2xl" />
+      {/* HERO (desktop only) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-[#0A0A0B] relative overflow-hidden items-center justify-center p-12 border-l border-white/[0.05]">
+        <div className="absolute inset-0 opacity-[0.18]">
+          <div className="absolute top-10 left-10 w-64 h-64 bg-[#7C5CFF] rounded-full blur-3xl" />
+          <div className="absolute bottom-10 right-10 w-80 h-80 bg-[#7C5CFF] rounded-full blur-3xl" />
         </div>
 
-        {/* Content */}
         <div className="relative z-10 text-center space-y-8 max-w-md">
-          {/* Big logo / icon */}
-          <div className="inline-flex p-2 ">
+          <div className="inline-flex p-2">
             <img
-              src="/logo.svg" // relative to public folder
+              src="/logo.svg"
               alt="Company Logo"
-              className="w-[140px] h-[140px] object-contain"
+              className="w-[120px] h-[120px] object-contain"
             />
           </div>
 
           <div>
-            <h2 className="text-3xl font-black text-white tracking-tight">
+            <h2 className="text-[28px] font-bold text-white tracking-tight leading-tight">
               Attendance &amp; Payroll
             </h2>
-            <p className="text-sm text-neutral-400 mt-2 leading-relaxed">
+            <p className="text-[14px] text-white/50 mt-3 leading-relaxed">
               Manage your workforce effortlessly. Track daily attendance,
-              generate reports, and handle payroll – all in one place.
+              generate reports, and handle payroll — all in one place.
             </p>
           </div>
 
-          {/* Feature icons */}
-          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-neutral-800/50">
-            <div className="flex flex-col items-center space-y-1">
-              <div className="p-2 bg-neutral-900/80 rounded-xl border border-neutral-800/50 text-red-400">
-                <Users className="w-5 h-5" />
+          <div className="grid grid-cols-3 gap-3 pt-6 border-t border-white/[0.06]">
+            <div className="flex flex-col items-center gap-2 py-3">
+              <div className="w-10 h-10 rounded-[12px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                <Users className="w-[18px] h-[18px] text-[#7C5CFF]" />
               </div>
-              <span className="text-[10px] font-medium text-neutral-400">
+              <span className="text-[11px] font-medium text-white/50">
                 Employees
               </span>
             </div>
-            <div className="flex flex-col items-center space-y-1">
-              <div className="p-2 bg-neutral-900/80 rounded-xl border border-neutral-800/50 text-emerald-400">
-                <Clock className="w-5 h-5" />
+            <div className="flex flex-col items-center gap-2 py-3">
+              <div className="w-10 h-10 rounded-[12px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                <Clock className="w-[18px] h-[18px] text-[#30D158]" />
               </div>
-              <span className="text-[10px] font-medium text-neutral-400">
+              <span className="text-[11px] font-medium text-white/50">
                 Attendance
               </span>
             </div>
-            <div className="flex flex-col items-center space-y-1">
-              <div className="p-2 bg-neutral-900/80 rounded-xl border border-neutral-800/50 text-blue-400">
-                <BarChart3 className="w-5 h-5" />
+            <div className="flex flex-col items-center gap-2 py-3">
+              <div className="w-10 h-10 rounded-[12px] bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                <BarChart3 className="w-[18px] h-[18px] text-[#0A84FF]" />
               </div>
-              <span className="text-[10px] font-medium text-neutral-400">
+              <span className="text-[11px] font-medium text-white/50">
                 Reports
               </span>
             </div>
           </div>
 
-          <p className="text-[15px] text-neutral-500 mt-4">
+          <p className="text-[12px] text-white/30 pt-2">
             &copy; 2026 HONDA Portal · Secured &amp; Reliable
           </p>
         </div>

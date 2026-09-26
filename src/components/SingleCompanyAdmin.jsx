@@ -21,9 +21,9 @@ import {
   X,
   Menu,
   Search,
-  ArrowLeft,
   Calendar,
   ChevronDown,
+  ChevronRight,
   TrendingUp,
   Wallet,
   Download,
@@ -36,6 +36,8 @@ import {
   CreditCard,
   Briefcase,
   DollarSign,
+  ArrowLeft,
+  ChevronLeft,
   MessageSquare,
 } from "lucide-react";
 import CustomMonthPicker from "./ui/CustomMonthPicker";
@@ -47,9 +49,9 @@ import CustomTimePicker from "./ui/CustomTimePicker";
 import FeedbackFlow from "../feedback/FeedbackFlow";
 import FeedbackAdminDashboard from "../feedback/FeedbackAdminDashboard";
 
-// Modernized styling tokens with native dark color-scheme calendar support
+// Modernized styling tokens with iOS-dark palette
 const inputBase =
-  "bg-neutral-950/80 border border-neutral-800 rounded-xl text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all [color-scheme:dark]";
+  "bg-white/[0.03] border border-white/[0.08] rounded-[10px] text-[15px] text-white placeholder-white/30 focus:outline-none focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 transition-all";
 const inputClass = `${inputBase} w-full px-3.5 py-2.5`;
 const inputIconClass = `${inputBase} w-full py-2.5 pl-10 pr-3.5`;
 const selectClass = `${inputBase} w-full px-3.5 py-2.5 pr-9 appearance-none cursor-pointer`;
@@ -58,7 +60,7 @@ function SelectField({ children, className = "" }) {
   return (
     <div className={`relative ${className}`}>
       {children}
-      <ChevronDown className="w-4 h-4 text-neutral-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+      <ChevronDown className="w-4 h-4 text-white/40 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
     </div>
   );
 }
@@ -72,14 +74,23 @@ export default function SingleCompanyAdmin({
   const isAdmin = Boolean(currentUser?.is_admin);
   const displayName = currentUser?.full_name || currentUser?.username || "User";
 
-  const feedbackRole = currentUser?.feedback_role || null;
-  const hasFeedbackAccess =
-    feedbackRole === "staff" || feedbackRole === "admin";
+  const userInitials = (() => {
+    const name = (displayName || "").trim();
+    if (!name) return "U";
+    const parts = name.split(/\s+/);
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (
+      parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
+    ).toUpperCase();
+  })();
 
   const [activeTab, setActiveTab] = useState(isAdmin ? "employees" : "daily");
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [mobileShowHome, setMobileShowHome] = useState(true);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Mobile navigation: "home" | "attendanceMenu" | "feedbackMenu" | "section"
+  const [mobileScreen, setMobileScreen] = useState("home");
 
   // Form & Date States
   const [empName, setEmpName] = useState("");
@@ -126,9 +137,8 @@ export default function SingleCompanyAdmin({
   const [calcOvertimeHours, setCalcOvertimeHours] = useState(0);
   const [calcAdvanceDeductions, setCalcAdvanceDeductions] = useState(0);
   const [calcResult, setCalcResult] = useState(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // Form & Date States (add these)
+  // Employee form extra fields
   const [empFatherName, setEmpFatherName] = useState("");
   const [empCnic, setEmpCnic] = useState("");
   const [empFatherCnic, setEmpFatherCnic] = useState("");
@@ -138,26 +148,21 @@ export default function SingleCompanyAdmin({
   const [empDateOfJoining, setEmpDateOfJoining] = useState("");
   const [empReference, setEmpReference] = useState("");
   const [empStartingSalary, setEmpStartingSalary] = useState("");
-  // Add this new state near the other state declarations (around line 60)
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
 
-  // Add this function to open employee profile
   const openEmployeeProfile = (emp) => {
     setSelectedEmployee(emp);
     setProfileModalOpen(true);
   };
 
-  // Add this function to close employee profile
   const closeEmployeeProfile = () => {
     setProfileModalOpen(false);
     setSelectedEmployee(null);
   };
 
-  // Add this utility function to format dates
   const formatDate = (dateStr) => {
     if (!dateStr) return "Not provided";
-    // Parse "YYYY-MM-DD" as LOCAL date to avoid UTC → local day-shift.
     const parts = String(dateStr).split("-");
     if (parts.length !== 3) return dateStr;
     const [y, m, d] = parts.map(Number);
@@ -224,27 +229,12 @@ export default function SingleCompanyAdmin({
     });
   };
 
-  const toggleManagersCanPickDates = async () => {
-    if (!isAdmin) return;
-    const next = !managersCanPickDates;
-    setManagersCanPickDates(next); // optimistic
-    const { error } = await supabase
-      .from("companies")
-      .update({ managers_can_pick_dates: next })
-      .eq("id", companyId);
-    if (error) {
-      setManagersCanPickDates(!next); // revert
-      triggerToast(`Failed to update setting: ${error.message}`, "error");
-    } else {
-      triggerToast(
-        next
-          ? "Managers can now pick any date for attendance."
-          : "Managers restricted to today only."
-      );
-    }
-  };
+  // Feedback access
+  const feedbackRole = currentUser?.feedback_role || null;
+  const hasFeedbackAccess =
+    feedbackRole === "staff" || feedbackRole === "admin";
 
-  // 1. DATA ISOLATION RESET & REALTIME
+  // ---------- DATA ISOLATION RESET & REALTIME ----------
   useEffect(() => {
     if (!companyId) return;
     setEmployees([]);
@@ -257,17 +247,20 @@ export default function SingleCompanyAdmin({
     setTodayAttendance([]);
     setIsLocked(false);
 
-    // Load company settings (manager date-picking permission)
+    fetchEmployees();
+
     supabase
       .from("companies")
       .select("managers_can_pick_dates")
       .eq("id", companyId)
       .maybeSingle()
-      .then(({ data }) => {
-        if (data) setManagersCanPickDates(!!data.managers_can_pick_dates);
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("[toggle load] error:", error);
+        } else {
+          setManagersCanPickDates(!!data?.managers_can_pick_dates);
+        }
       });
-
-    fetchEmployees();
 
     const channel = supabase
       .channel(`realtime_company_${companyId}`)
@@ -342,24 +335,15 @@ export default function SingleCompanyAdmin({
     }
   };
 
-  // Helper: strip non‑digits
   const onlyDigits = (str) => str.replace(/\D/g, "");
-
-  // Handler for CNIC fields (exactly 13 digits)
   const handleCnicChange = (setter, value) => {
     const digits = onlyDigits(value);
-    if (digits.length <= 13) {
-      setter(digits);
-    }
+    if (digits.length <= 13) setter(digits);
   };
-
-  // Handler for number fields (only digits, any length)
   const handleNumberChange = (setter, value) => {
     const digits = onlyDigits(value);
     setter(digits);
   };
-
-  // Handler for name (auto‑uppercase)
   const handleNameChange = (value) => {
     setEmpName(value.toUpperCase());
   };
@@ -428,7 +412,6 @@ export default function SingleCompanyAdmin({
       return;
     }
 
-    // Validate CNIC fields (must be exactly 13 digits if provided)
     if (empCnic && empCnic.length !== 13) {
       triggerToast("CNIC must be exactly 13 digits.", "error");
       return;
@@ -557,7 +540,6 @@ export default function SingleCompanyAdmin({
     if (activeTab === "history") fetchAttendanceHistory();
   }, [activeTab, employees]);
 
-  // Collapse any expanded row when filters change
   useEffect(() => {
     setExpandedHistoryEmp(null);
   }, [historySearch, historyDateFilter]);
@@ -600,30 +582,6 @@ export default function SingleCompanyAdmin({
       }
       setDailyStatus(statusMap);
       setDailyCheckIn(checkInMap);
-
-      // Check lock for manager
-      // if (!isAdmin) {
-      //   const todayStr = makeDateStr(
-      //     currentDate.getFullYear(),
-      //     currentDate.getMonth(),
-      //     currentDate.getDate()
-      //   );
-      //   const { data: lockData, error: lockError } = await supabase
-      //     .from("manager_daily_locks")
-      //     .select("id")
-      //     .eq("user_id", currentUser.id)
-      //     .eq("company_id", companyId)
-      //     .eq("date", todayStr)
-      //     .maybeSingle();
-
-      //   if (lockError) {
-      //     triggerToast("Failed to check lock status", "error");
-      //   } else {
-      //     setIsLocked(!!lockData);
-      //   }
-      // }
-
-      // Managers are no longer locked after saving — they can re-edit today.
       setIsLocked(false);
     } catch (err) {
       triggerToast(`Failed to load attendance: ${err.message}`, "error");
@@ -632,6 +590,7 @@ export default function SingleCompanyAdmin({
 
   useEffect(() => {
     if (activeTab === "daily") loadDailyAttendance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeTab,
     selectedMonth,
@@ -668,14 +627,6 @@ export default function SingleCompanyAdmin({
         triggerToast("Managers can only mark attendance for today.", "error");
         return;
       }
-
-      // if (isLocked) {
-      //   triggerToast(
-      //     "Today's attendance has already been saved. You cannot edit again.",
-      //     "error"
-      //   );
-      //   return;
-      // }
     }
 
     try {
@@ -713,8 +664,6 @@ export default function SingleCompanyAdmin({
       });
 
       await Promise.all(promises);
-
-      // No lock created — manager can re-save today's attendance anytime.
       setIsLocked(false);
 
       triggerToast(`Attendance saved for ${dateStr}`);
@@ -751,6 +700,7 @@ export default function SingleCompanyAdmin({
 
   useEffect(() => {
     if (activeTab === "bulk") loadBulkAttendance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedMonth, selectedYear, employees]);
 
   const saveBulkAttendance = async () => {
@@ -855,55 +805,64 @@ export default function SingleCompanyAdmin({
       });
     }
 
-    const activeEmployees = employees.filter((e) => e.is_active);
-    const report = activeEmployees.map((emp) => {
-      if (bulkMap[emp.id] !== undefined) {
-        const work = Number(bulkMap[emp.id]);
-        const abs = totalDays - work;
-        const daily = Number(emp.base_salary) / totalDays;
-        const pay = Math.min(daily * work, Number(emp.base_salary));
+    const report = employees
+      .filter((e) => e.is_active)
+      .map((emp) => {
+        if (bulkMap[emp.id] !== undefined) {
+          const work = Number(bulkMap[emp.id]);
+          const abs = totalDays - work;
+          const daily = Number(emp.base_salary) / totalDays;
+          const pay = Math.min(daily * work, Number(emp.base_salary));
+          const bal = Number(emp.base_salary) - pay;
+          return {
+            ...emp,
+            type: "bulk",
+            totalDays,
+            work,
+            abs,
+            daily,
+            pay,
+            bal,
+          };
+        }
+
+        const records = dailyMap[emp.id] || [];
+        let full = 0,
+          half = 0,
+          hol = 0,
+          abs = 0;
+        for (let day = 1; day <= totalDays; day++) {
+          const dateStr = makeDateStr(selectedYear, selectedMonth, day);
+          const rec = records.find((r) => r.date === dateStr);
+          const status = rec ? rec.status : "absent";
+          if (status === "full") full++;
+          else if (status === "half") half++;
+          else if (status === "holiday") hol++;
+          else abs++;
+        }
+        const paidHol = Math.min(hol, 4);
+        const extraHol = Math.max(hol - 4, 0);
+        abs += extraHol;
+        const paidDays = full + half * 0.5 + paidHol;
+        const dailyRate = Number(emp.base_salary) / totalDays;
+        const pay = Math.min(dailyRate * paidDays, Number(emp.base_salary));
         const bal = Number(emp.base_salary) - pay;
-        return { ...emp, type: "bulk", totalDays, work, abs, daily, pay, bal };
-      }
+        return {
+          ...emp,
+          type: "daily",
+          totalDays,
+          full,
+          half,
+          paidHol,
+          extraHol,
+          abs,
+          paidDays,
+          dailyRate,
+          pay,
+          bal,
+        };
+      });
 
-      const records = dailyMap[emp.id] || [];
-      let full = 0,
-        half = 0,
-        hol = 0,
-        abs = 0;
-      for (let day = 1; day <= totalDays; day++) {
-        const dateStr = makeDateStr(selectedYear, selectedMonth, day);
-        const rec = records.find((r) => r.date === dateStr);
-        const status = rec ? rec.status : "absent";
-        if (status === "full") full++;
-        else if (status === "half") half++;
-        else if (status === "holiday") hol++;
-        else abs++;
-      }
-      const paidHol = Math.min(hol, 4);
-      const extraHol = Math.max(hol - 4, 0);
-      abs += extraHol;
-      const paidDays = full + half * 0.5 + paidHol;
-      const dailyRate = Number(emp.base_salary) / totalDays;
-      const pay = Math.min(dailyRate * paidDays, Number(emp.base_salary));
-      const bal = Number(emp.base_salary) - pay;
-      return {
-        ...emp,
-        type: "daily",
-        totalDays,
-        full,
-        half,
-        paidHol,
-        extraHol,
-        abs,
-        paidDays,
-        dailyRate,
-        pay,
-        bal,
-      };
-    });
-
-    // Sort highest base salary first
     const sorted = [...report].sort(
       (a, b) => Number(b.base_salary) - Number(a.base_salary)
     );
@@ -954,15 +913,10 @@ export default function SingleCompanyAdmin({
           <title>${title}</title>
           <style>
             body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; color: #111; background: #fff; }
-            h2 { border-bottom: 2px solid #ef4444; padding-bottom: 8px; margin-bottom: 16px; font-size: 20px; }
+            h2 { border-bottom: 2px solid #7c5cff; padding-bottom: 8px; margin-bottom: 16px; font-size: 20px; }
             table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
             th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; }
             th { background-color: #f9fafb; font-weight: 700; color: #374151; }
-            .badge { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
-            .badge-full { background: #dcfce7; color: #15803d; }
-            .badge-half { background: #fef9c3; color: #a16207; }
-            .badge-holiday { background: #dbeafe; color: #1d4ed8; }
-            .badge-absent { background: #fee2e2; color: #b91c1c; }
             .footer { margin-top: 30px; font-size: 11px; color: #6b7280; text-align: right; }
           </style>
         </head>
@@ -988,12 +942,10 @@ export default function SingleCompanyAdmin({
       now.getDate()
     );
 
-    // If no date filter is set, default to today only. Name search still applies.
     const baseRecords = historyDateFilter
       ? filteredHistory
       : filteredHistory.filter((rec) => rec.date === todayStr);
 
-    // Salary order: highest paid employee first. Same employee keeps newest date first.
     const sortedBySalary = [...baseRecords].sort((a, b) => {
       const ea = employees.find((e) => e.id === a.employee_id);
       const eb = employees.find((e) => e.id === b.employee_id);
@@ -1003,7 +955,6 @@ export default function SingleCompanyAdmin({
       return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
     });
 
-    // Date label: single day, or range if records span multiple dates
     const distinctDates = Array.from(
       new Set(sortedBySalary.map((r) => r.date))
     ).sort();
@@ -1052,7 +1003,7 @@ export default function SingleCompanyAdmin({
           <title>${title}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; color: #1e293b; }
-            .header { border-bottom: 2px solid #dc2626; padding-bottom: 12px; margin-bottom: 20px; }
+            .header { border-bottom: 2px solid #7c5cff; padding-bottom: 12px; margin-bottom: 20px; }
             .company { font-size: 22px; font-weight: bold; color: #0f172a; }
             .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
             .date-label { font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 8px; }
@@ -1076,15 +1027,13 @@ export default function SingleCompanyAdmin({
             <div class="subtitle">Daily Attendance Report</div>
             <div class="date-label">${dateLabel}</div>
           </div>
-
           <div class="summary-box">
-            <div class="card"><div class="num">${totalRecords}</div><div class="lbl">Total Employees</div></div>
+            <div class="card"><div class="num">${totalRecords}</div><div class="lbl">Total Logs</div></div>
             <div class="card"><div class="num" style="color:#166534">${fullCount}</div><div class="lbl">Full Days</div></div>
             <div class="card"><div class="num" style="color:#854d0e">${halfCount}</div><div class="lbl">Half Days</div></div>
             <div class="card"><div class="num" style="color:#1e40af">${holidayCount}</div><div class="lbl">Holidays</div></div>
             <div class="card"><div class="num" style="color:#991b1b">${absentCount}</div><div class="lbl">Absents</div></div>
           </div>
-
           <table>
             <thead>
               <tr>
@@ -1144,8 +1093,10 @@ export default function SingleCompanyAdmin({
 
   useEffect(() => {
     if (activeTab === "analytics" && isAdmin) fetchTodayAttendance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, employees]);
 
+  // Tabs
   const baseTabs = isAdmin
     ? [
         { id: "employees", label: "Employees", icon: Users },
@@ -1161,12 +1112,14 @@ export default function SingleCompanyAdmin({
         { id: "history", label: "Attendance History", icon: History },
       ];
 
+  const feedbackTabIds = ["feedback", "feedback-admin"];
+
   const availableTabs = (() => {
     if (!hasFeedbackAccess) return baseTabs;
     if (feedbackRole === "admin") {
       return [
         ...baseTabs,
-        { id: "feedback-admin", label: "Feedback", icon: BarChart3 },
+        { id: "feedback-admin", label: "Feedback Dashboard", icon: BarChart3 },
       ];
     }
     return [
@@ -1174,6 +1127,59 @@ export default function SingleCompanyAdmin({
       { id: "feedback", label: "Feedback", icon: MessageSquare },
     ];
   })();
+
+  const attendanceTabs = availableTabs.filter(
+    (t) => !feedbackTabIds.includes(t.id)
+  );
+  const feedbackTabsList = availableTabs.filter((t) =>
+    feedbackTabIds.includes(t.id)
+  );
+
+  const goToTab = (tabId) => {
+    setActiveTab(tabId);
+    setMobileScreen("section");
+  };
+
+  const handleAttendanceTap = () => {
+    if (attendanceTabs.length === 1) goToTab(attendanceTabs[0].id);
+    else setMobileScreen("attendanceMenu");
+  };
+
+  const handleFeedbackTap = () => {
+    if (feedbackTabsList.length === 1) goToTab(feedbackTabsList[0].id);
+    else setMobileScreen("feedbackMenu");
+  };
+
+  const handleMobileBack = () => {
+    if (mobileScreen === "section") {
+      if (feedbackTabIds.includes(activeTab)) setMobileScreen("feedbackMenu");
+      else setMobileScreen("attendanceMenu");
+    } else {
+      setMobileScreen("home");
+    }
+  };
+
+  // Toggle managers date access
+  const toggleManagersCanPickDates = async () => {
+    if (!isAdmin) return;
+    const next = !managersCanPickDates;
+    setManagersCanPickDates(next);
+    const { error } = await supabase
+      .from("companies")
+      .update({ managers_can_pick_dates: next })
+      .eq("id", companyId);
+    if (error) {
+      console.error("[toggle save] error:", error);
+      setManagersCanPickDates(!next);
+      triggerToast(`Failed to update setting: ${error.message}`, "error");
+    } else {
+      triggerToast(
+        next
+          ? "Managers can now pick any date for attendance."
+          : "Managers restricted to today only."
+      );
+    }
+  };
 
   const filteredHistory = historyRecords.filter((rec) => {
     const emp = employees.find((e) => e.id === rec.employee_id);
@@ -1184,10 +1190,6 @@ export default function SingleCompanyAdmin({
     return empNameMatch && dateMatch;
   });
 
-  // Group filtered records by employee (accordion view).
-  // Built from filteredHistory so search + date filter keep working exactly
-  // as before, and the print report (which still uses filteredHistory) is
-  // unaffected.
   const groupedHistory = (() => {
     const map = {};
     filteredHistory.forEach((rec) => {
@@ -1216,7 +1218,7 @@ export default function SingleCompanyAdmin({
     0
   );
   const avgSalary = employees.length > 0 ? totalBudget / employees.length : 0;
-  const totalToday = employees.length;
+  const totalToday = employees.filter((e) => e.is_active).length;
   const presentFullToday = todayAttendance.filter(
     (r) => r.status === "full"
   ).length;
@@ -1234,6 +1236,8 @@ export default function SingleCompanyAdmin({
   const attendanceRate =
     totalToday > 0 ? Math.round((presentToday / totalToday) * 100) : 0;
 
+  // ========== EARLY RETURNS: FULL-SCREEN FLOWS ==========
+
   if (activeTab === "feedback" && hasFeedbackAccess) {
     return (
       <FeedbackFlow
@@ -1242,7 +1246,7 @@ export default function SingleCompanyAdmin({
         currentUser={currentUser}
         onLogout={onLogout}
         onExit={() => {
-          setMobileShowHome(true);
+          setMobileScreen("home");
           setActiveTab(isAdmin ? "employees" : "daily");
         }}
       />
@@ -1255,20 +1259,20 @@ export default function SingleCompanyAdmin({
     hasFeedbackAccess
   ) {
     return (
-      <div className="fixed inset-0 flex bg-neutral-950 text-neutral-100 font-sans overflow-hidden">
-        <aside className="hidden md:flex md:flex-col w-64 bg-neutral-900 border-r border-neutral-800 justify-between shrink-0">
+      <div className="fixed inset-0 flex bg-black text-white font-sans overflow-hidden">
+        <aside className="hidden md:flex md:flex-col w-64 bg-[#1C1C1E] border-r border-white/[0.06] justify-between shrink-0">
           <div>
-            <div className="p-5 border-b border-neutral-800 flex items-center space-x-3">
+            <div className="p-5 border-b border-white/[0.06] flex items-center space-x-3">
               <img
                 src="/logo.svg"
                 alt="Logo"
                 className="w-[50px] h-[50px] object-contain shrink-0"
               />
               <div className="overflow-hidden">
-                <h2 className="font-bold text-sm text-white truncate">
+                <h2 className="font-semibold text-[14px] text-white truncate">
                   {companyName}
                 </h2>
-                <span className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
+                <span className="text-[10px] font-semibold tracking-wider text-white/40 uppercase">
                   Feedback Admin
                 </span>
               </div>
@@ -1276,20 +1280,20 @@ export default function SingleCompanyAdmin({
             <nav className="p-3 space-y-1">
               <button
                 onClick={() => {
-                  setMobileShowHome(true);
+                  setMobileScreen("home");
                   setActiveTab("employees");
                 }}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold text-neutral-400 hover:bg-neutral-800 hover:text-white transition-all"
+                className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-[10px] text-[13px] font-semibold text-white/60 hover:bg-white/[0.05] hover:text-white transition-all"
               >
-                <ArrowLeft className="w-4 h-4" />
+                <ArrowLeft className="w-[18px] h-[18px]" />
                 <span>Back to Panel</span>
               </button>
             </nav>
           </div>
-          <div className="p-4 border-t border-neutral-800">
+          <div className="p-4 border-t border-white/[0.06]">
             <button
               onClick={onLogout}
-              className="w-full flex items-center justify-center space-x-2 bg-neutral-950 hover:bg-red-950/40 border border-neutral-800 hover:border-red-900 text-neutral-400 hover:text-red-400 py-2.5 rounded-xl text-xs font-bold transition-all"
+              className="w-full flex items-center justify-center space-x-2 bg-white/[0.04] hover:bg-[#FF453A]/10 border border-white/[0.06] hover:border-[#FF453A]/25 text-white/50 hover:text-[#FF6961] py-2.5 rounded-[12px] text-[12px] font-semibold transition-all"
             >
               <LogOut className="w-4 h-4" />
               <span>LOGOUT</span>
@@ -1298,22 +1302,22 @@ export default function SingleCompanyAdmin({
         </aside>
 
         <div className="flex-1 flex flex-col w-full h-full overflow-hidden min-w-0">
-          <header className="h-16 border-b border-neutral-800 bg-neutral-900/50 flex items-center justify-between px-4 sm:px-8 shrink-0">
-            <div className="flex items-center gap-3">
+          <header className="h-[56px] border-b border-white/[0.06] bg-black/70 backdrop-blur-2xl flex items-center justify-between px-4 sm:px-8 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
               <button
                 onClick={() => {
-                  setMobileShowHome(true);
+                  setMobileScreen("home");
                   setActiveTab("employees");
                 }}
-                className="md:hidden p-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-neutral-300 transition-colors"
+                className="md:hidden p-2 -ml-2 rounded-xl text-white/60 hover:text-white hover:bg-white/[0.06] transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
-              <span className="text-sm font-extrabold text-white">
+              <span className="text-[15px] font-semibold text-white truncate">
                 Feedback Dashboard
               </span>
             </div>
-            <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
+            <div className="text-[10px] font-semibold text-white/40 uppercase tracking-wider truncate">
               {displayName}
             </div>
           </header>
@@ -1328,47 +1332,48 @@ export default function SingleCompanyAdmin({
     );
   }
 
+  // ========== MAIN RENDER ==========
+
   return (
-    <div className="fixed inset-0 flex bg-neutral-950 text-neutral-100 font-sans overflow-hidden">
+    <div className="fixed inset-0 flex bg-black text-white font-sans overflow-hidden">
       {/* TOAST */}
       {toast.show && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl shadow-black/80 border border-neutral-800 bg-neutral-900/95 backdrop-blur-xl text-white max-w-[90vw] animate-toast">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-3 rounded-[14px] shadow-2xl shadow-black/80 border border-white/[0.08] bg-[#1C1C1E]/95 backdrop-blur-2xl text-white max-w-[90vw]">
           {toast.type === "error" ? (
-            <div className="p-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 shrink-0">
+            <div className="p-1.5 rounded-[8px] bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF453A] shrink-0">
               <AlertCircle className="w-4 h-4" />
             </div>
           ) : (
-            <div className="p-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+            <div className="p-1.5 rounded-[8px] bg-[#30D158]/10 border border-[#30D158]/25 text-[#30D158] shrink-0">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           )}
-          <span className="text-xs font-semibold whitespace-nowrap">
+          <span className="text-[14px] sm:text-[12px] font-semibold whitespace-nowrap">
             {toast.message}
           </span>
           <button
             type="button"
             onClick={() => setToast((prev) => ({ ...prev, show: false }))}
-            className="p-1 rounded-lg text-neutral-500 hover:text-white hover:bg-neutral-800 transition-colors ml-1 cursor-pointer"
+            className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors ml-1 cursor-pointer"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
       {/* CONFIRM MODAL */}
       {confirmModal.show && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-neutral-900/95 border border-neutral-800 rounded-3xl p-6 sm:p-7 w-full max-w-md space-y-5 shadow-2xl shadow-black/90 animate-popover relative overflow-hidden">
-            <div className="absolute -top-12 -right-12 w-36 h-36 bg-red-600/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="bg-[#1C1C1E] border border-white/[0.08] rounded-[20px] p-6 w-full max-w-md space-y-5 shadow-2xl shadow-black/90 relative overflow-hidden">
             <div className="flex items-start gap-4">
-              <div className="p-3 bg-red-600/10 border border-red-500/20 rounded-2xl text-red-500 shrink-0 shadow-inner">
+              <div className="p-3 bg-[#FF453A]/10 border border-[#FF453A]/25 rounded-[14px] text-[#FF453A] shrink-0">
                 <AlertCircle className="w-6 h-6" />
               </div>
               <div className="space-y-1 pt-0.5">
-                <h3 className="text-base font-extrabold text-white tracking-wide">
+                <h3 className="text-[16px] font-bold text-white tracking-wide">
                   {confirmModal.title}
                 </h3>
-                <p className="text-xs text-neutral-400 leading-relaxed">
+                <p className="text-[14px] sm:text-[13px] text-white/60 leading-relaxed">
                   {confirmModal.message}
                 </p>
               </div>
@@ -1384,14 +1389,14 @@ export default function SingleCompanyAdmin({
                     onConfirm: null,
                   })
                 }
-                className="flex-1 h-11 bg-neutral-950/80 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-xs font-bold text-neutral-300 transition-all cursor-pointer active:scale-[0.99]"
+                className="flex-1 h-12 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] rounded-[14px] text-[15px] sm:text-[13px] font-semibold text-white/85 transition-all cursor-pointer active:scale-[0.99]"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmModal.onConfirm}
-                className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-red-950/80 cursor-pointer active:scale-[0.99] flex items-center justify-center gap-2"
+                className="flex-1 h-12 bg-gradient-to-b from-[#FF6B60] to-[#E0382E] hover:from-[#FF7B70] hover:to-[#E0382E] text-white rounded-[14px] text-[15px] sm:text-[13px] font-semibold transition-all shadow-lg shadow-[#FF453A]/20 cursor-pointer active:scale-[0.99]"
               >
                 Confirm Delete
               </button>
@@ -1400,29 +1405,20 @@ export default function SingleCompanyAdmin({
         </div>
       )}
 
-      {/* EMPLOYEE MODAL */}
       {/* EMPLOYEE ADD/EDIT MODAL */}
       {employeeModalOpen && isAdmin && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-black/90 via-black/80 to-black/90 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="bg-gradient-to-br from-neutral-900/98 via-neutral-900/95 to-neutral-950/98 border border-neutral-700/50 rounded-3xl p-6 sm:p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden shadow-[0_0_80px_-12px_rgba(220,38,38,0.15)] shadow-2xl animate-popover relative">
-            {/* Enhanced Glassmorphism Decorative Elements */}
-            <div className="absolute -top-32 -right-32 w-96 h-96 bg-gradient-to-br from-red-600/20 via-red-500/10 to-transparent rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-gradient-to-tr from-blue-600/10 via-purple-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
-
-            {/* Header with Enhanced Design */}
-            <div className="flex items-start sm:items-center justify-between gap-3 border-b border-neutral-700/50 pb-6 mb-6 relative">
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                <div className="relative p-2.5 sm:p-3 bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] shrink-0">
-                  <UserPlus className="w-5 h-5 sm:w-6 sm:h-6 text-red-400 drop-shadow-[0_0_8px_rgba(220,38,38,0.3)]" />
-                  <div className="absolute inset-0 bg-gradient-to-tr from-red-500/20 to-transparent rounded-2xl animate-pulse" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl">
+          <div className="bg-[#1C1C1E] border border-white/[0.08] rounded-[20px] p-6 sm:p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl shadow-black/80 relative">
+            <div className="flex items-start sm:items-center justify-between gap-3 border-b border-white/[0.06] pb-5 mb-5">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2.5 rounded-[14px] bg-[#7C5CFF]/12 border border-[#7C5CFF]/25 shrink-0">
+                  <UserPlus className="w-5 h-5 text-[#A390FF]" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-lg sm:text-2xl font-bold text-white tracking-tight bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent">
-                    {editingEmpId
-                      ? "Update Employee Profile"
-                      : "Register New Employee"}
+                  <h3 className="text-[18px] sm:text-[20px] font-bold text-white tracking-tight">
+                    {editingEmpId ? "Update Employee" : "Register New Employee"}
                   </h3>
-                  <p className="text-xs sm:text-sm text-neutral-400 font-medium">
+                  <p className="text-[13px] text-white/50 font-medium mt-0.5">
                     {editingEmpId
                       ? "Modify employee details and salary information"
                       : "Add a new staff member to the company"}
@@ -1432,28 +1428,20 @@ export default function SingleCompanyAdmin({
               <button
                 type="button"
                 onClick={closeEmployeeModal}
-                className="p-2 sm:p-2.5 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800/60 hover:border hover:border-neutral-700 transition-all duration-200 cursor-pointer group shrink-0"
+                className="p-2 rounded-xl text-white/50 hover:text-white hover:bg-white/[0.06] transition-all cursor-pointer shrink-0"
               >
-                <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-200" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEmployee} className="space-y-8">
-              {/* Personal Information Section */}
+            <form onSubmit={handleSaveEmployee} className="space-y-7">
+              {/* Personal */}
               <div className="space-y-4">
-                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
-                  <div className="p-1.5 bg-red-500/20 rounded-lg">
-                    <User className="w-4 h-4 text-red-400" />
-                  </div>
-                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
-                    Personal Information
-                  </span>
-                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <SectionLabel icon={User} label="Personal Information" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1">
-                      Full Name <span className="text-red-400">*</span>
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
+                      Full Name <span className="text-[#FF453A]">*</span>
                     </label>
                     <input
                       type="text"
@@ -1462,11 +1450,11 @@ export default function SingleCompanyAdmin({
                       placeholder="e.g. AHMED RAZA"
                       value={empName}
                       onChange={(e) => handleNameChange(e.target.value)}
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none uppercase font-medium hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none uppercase font-medium"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
                       Father Name
                     </label>
                     <input
@@ -1476,27 +1464,22 @@ export default function SingleCompanyAdmin({
                       onChange={(e) =>
                         setEmpFatherName(e.target.value.toUpperCase())
                       }
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* CNIC / Contact Section */}
+              {/* Identification */}
               <div className="space-y-4">
-                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
-                  <div className="p-1.5 bg-red-500/20 rounded-lg">
-                    <CreditCard className="w-4 h-4 text-red-400" />
-                  </div>
-                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
-                    Identification & Contact
-                  </span>
-                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <SectionLabel
+                  icon={CreditCard}
+                  label="Identification & Contact"
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
-                      CNIC <span className="text-neutral-500">(13 digits)</span>
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
+                      CNIC <span className="text-white/30">(13 digits)</span>
                     </label>
                     <input
                       type="text"
@@ -1507,13 +1490,12 @@ export default function SingleCompanyAdmin({
                         handleCnicChange(setEmpCnic, e.target.value)
                       }
                       maxLength="13"
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none font-mono"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
-                      Father CNIC{" "}
-                      <span className="text-neutral-500">(13 digits)</span>
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
+                      Father CNIC
                     </label>
                     <input
                       type="text"
@@ -1524,13 +1506,13 @@ export default function SingleCompanyAdmin({
                         handleCnicChange(setEmpFatherCnic, e.target.value)
                       }
                       maxLength="13"
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none font-mono"
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
                       Mobile Number
                     </label>
                     <input
@@ -1541,11 +1523,11 @@ export default function SingleCompanyAdmin({
                       onChange={(e) =>
                         handleNumberChange(setEmpMobile, e.target.value)
                       }
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none font-mono"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
                       Emergency Contact
                     </label>
                     <input
@@ -1559,7 +1541,7 @@ export default function SingleCompanyAdmin({
                           e.target.value
                         )
                       }
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none font-mono"
                     />
                   </div>
                 </div>
@@ -1567,40 +1549,22 @@ export default function SingleCompanyAdmin({
 
               {/* Address */}
               <div className="space-y-4">
-                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
-                  <div className="p-1.5 bg-red-500/20 rounded-lg">
-                    <MapPin className="w-4 h-4 text-red-400" />
-                  </div>
-                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
-                    Address
-                  </span>
-                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
-                </div>
-                <div className="space-y-1.5">
-                  <input
-                    type="text"
-                    placeholder="e.g. House #12, Street 5, Lahore"
-                    value={empAddress}
-                    onChange={(e) => setEmpAddress(e.target.value)}
-                    className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none hover:border-neutral-600"
-                  />
-                </div>
+                <SectionLabel icon={MapPin} label="Address" />
+                <input
+                  type="text"
+                  placeholder="e.g. House #12, Street 5, Lahore"
+                  value={empAddress}
+                  onChange={(e) => setEmpAddress(e.target.value)}
+                  className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none"
+                />
               </div>
 
-              {/* Employment Details */}
+              {/* Employment */}
               <div className="space-y-4">
-                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
-                  <div className="p-1.5 bg-red-500/20 rounded-lg">
-                    <Briefcase className="w-4 h-4 text-red-400" />
-                  </div>
-                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
-                    Employment Details
-                  </span>
-                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <SectionLabel icon={Briefcase} label="Employment Details" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
                       Date of Joining
                     </label>
                     <CustomDatePicker
@@ -1611,7 +1575,7 @@ export default function SingleCompanyAdmin({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
                       Reference
                     </label>
                     <input
@@ -1619,28 +1583,20 @@ export default function SingleCompanyAdmin({
                       placeholder="e.g. Employee referral"
                       value={empReference}
                       onChange={(e) => setEmpReference(e.target.value)}
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Salary Details */}
+              {/* Salary */}
               <div className="space-y-4">
-                <div className="flex items-center gap-3 pb-2 border-b border-neutral-700/30">
-                  <div className="p-1.5 bg-red-500/20 rounded-lg">
-                    <DollarSign className="w-4 h-4 text-red-400" />
-                  </div>
-                  <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">
-                    Salary Details
-                  </span>
-                  <div className="flex-1 h-px bg-gradient-to-r from-neutral-700/50 to-transparent" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <SectionLabel icon={DollarSign} label="Salary Details" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
                       Starting Salary{" "}
-                      <span className="text-neutral-500">(Rs.)</span>
+                      <span className="text-white/30">(Rs.)</span>
                     </label>
                     <input
                       type="text"
@@ -1650,14 +1606,12 @@ export default function SingleCompanyAdmin({
                       onChange={(e) =>
                         handleNumberChange(setEmpStartingSalary, e.target.value)
                       }
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none font-mono"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1">
-                      Current Salary{" "}
-                      <span className="text-neutral-500">(Rs.)</span>{" "}
-                      <span className="text-red-400">*</span>
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
+                      Current Salary <span className="text-[#FF453A]">*</span>
                     </label>
                     <input
                       type="text"
@@ -1668,26 +1622,25 @@ export default function SingleCompanyAdmin({
                       onChange={(e) =>
                         handleNumberChange(setEmpSalary, e.target.value)
                       }
-                      className="w-full h-12 bg-neutral-950/80 border-2 border-neutral-700/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/20 rounded-xl px-4 text-sm text-white placeholder-neutral-500 transition-all duration-200 outline-none font-mono hover:border-neutral-600"
+                      className="w-full h-12 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-4 text-[15px] text-white placeholder-white/30 transition-all outline-none font-mono"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons with Enhanced Design */}
-              <div className="flex gap-4 pt-6 border-t-2 border-neutral-700/30">
+              <div className="flex gap-3 pt-5 border-t border-white/[0.06]">
                 <button
                   type="button"
                   onClick={closeEmployeeModal}
-                  className="flex-1 h-12 bg-neutral-950/80 hover:bg-neutral-800/80 border-2 border-neutral-700/50 hover:border-neutral-600 rounded-xl text-sm font-bold text-neutral-300 transition-all duration-200 cursor-pointer active:scale-[0.98] hover:text-white"
+                  className="flex-1 h-12 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] rounded-[14px] text-[15px] sm:text-[14px] font-semibold text-white/85 transition-all cursor-pointer active:scale-[0.98]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 h-12 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl text-sm font-bold transition-all duration-200 shadow-[0_4px_20px_rgba(220,38,38,0.4)] hover:shadow-[0_4px_30px_rgba(220,38,38,0.6)] cursor-pointer active:scale-[0.98] flex items-center justify-center gap-3 group"
+                  className="flex-1 h-12 bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] text-white rounded-[14px] text-[15px] sm:text-[14px] font-semibold transition-all shadow-lg shadow-[#7C5CFF]/25 cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2"
                 >
-                  <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                  <Plus className="w-4 h-4" />
                   <span>{editingEmpId ? "Save Changes" : "Add Employee"}</span>
                 </button>
               </div>
@@ -1696,56 +1649,226 @@ export default function SingleCompanyAdmin({
         </div>
       )}
 
-      {/* SIDEBAR */}
-      <aside className="hidden md:flex md:flex-col w-64 bg-neutral-900 border-r border-neutral-800 justify-between shrink-0">
-        <div>
-          <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
-            <div className="flex items-center space-x-3 overflow-hidden">
-              <img
-                src="/logo.svg"
-                alt="Company Logo"
-                className="w-[50px] h-[50px] object-contain shrink-0"
-              />
-              <div className="overflow-hidden">
-                <h2 className="font-bold text-sm text-white truncate">
-                  {companyName}
-                </h2>
-                <span className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
-                  {isAdmin ? "Admin Access" : "Manager Access"}
-                </span>
+      {/* EMPLOYEE PROFILE MODAL */}
+      {profileModalOpen && selectedEmployee && isAdmin && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl">
+          <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-[#1C1C1E] border border-white/[0.08] rounded-[20px] shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06] shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-[#7C5CFF]/12 border border-[#7C5CFF]/25 rounded-[12px] text-[#A390FF]">
+                  <User className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-[17px] font-bold text-white tracking-tight">
+                    Employee Profile
+                  </h3>
+                  <p className="text-[12px] text-white/50">
+                    Complete details and contact information
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeEmployeeProfile}
+                className="p-2 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-5 flex-1">
+              <div className="bg-white/[0.03] border border-white/[0.08] rounded-[14px] p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="w-14 h-14 rounded-[14px] bg-[#7C5CFF]/15 border border-[#7C5CFF]/25 flex items-center justify-center text-xl font-bold text-[#A390FF] shrink-0">
+                    {selectedEmployee.name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-[16px] font-bold text-white truncate">
+                      {selectedEmployee.name}
+                    </h4>
+                    <div className="flex items-center gap-3 mt-1 text-[12px] text-white/50">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        Joined: {formatDate(selectedEmployee.date_of_joining)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-[#30D158]/10 border border-[#30D158]/20 rounded-lg px-3 py-2 text-right shrink-0 self-stretch sm:self-auto flex sm:block items-center justify-between">
+                  <span className="text-[10px] font-semibold text-[#30D158]/80 uppercase tracking-wider block">
+                    Current Salary
+                  </span>
+                  <span className="text-[16px] font-bold text-[#30D158] font-mono">
+                    Rs.{" "}
+                    {Number(selectedEmployee.base_salary).toLocaleString(
+                      "en-PK",
+                      {
+                        minimumFractionDigits: 0,
+                      }
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h5 className="text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+                  Personal Information
+                </h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <ProfileField
+                    label="Father Name"
+                    value={selectedEmployee.father_name}
+                  />
+                  <ProfileField
+                    label="Address"
+                    value={selectedEmployee.address}
+                    wrap
+                  />
+                  <ProfileField
+                    label="CNIC"
+                    value={selectedEmployee.cnic}
+                    mono
+                  />
+                  <ProfileField
+                    label="Father CNIC"
+                    value={selectedEmployee.father_cnic}
+                    mono
+                  />
+                  <ProfileField
+                    label="Mobile"
+                    value={selectedEmployee.mobile}
+                    mono
+                  />
+                  <ProfileField
+                    label="Emergency Contact"
+                    value={selectedEmployee.emergency_contact}
+                    mono
+                  />
+                  <ProfileField
+                    label="Date of Joining"
+                    value={formatDate(selectedEmployee.date_of_joining)}
+                  />
+                  <ProfileField
+                    label="Reference"
+                    value={selectedEmployee.reference}
+                  />
+                  <ProfileField
+                    label="Starting Salary"
+                    value={
+                      selectedEmployee.starting_salary
+                        ? `Rs. ${Number(
+                            selectedEmployee.starting_salary
+                          ).toLocaleString()}`
+                        : null
+                    }
+                    mono
+                  />
+                  <ProfileField
+                    label="Base Salary"
+                    value={`Rs. ${Number(
+                      selectedEmployee.base_salary
+                    ).toLocaleString()}`}
+                    mono
+                    highlight
+                  />
+                </div>
               </div>
             </div>
+
+            <div className="p-4 border-t border-white/[0.06] shrink-0">
+              <button
+                type="button"
+                onClick={closeEmployeeProfile}
+                className="w-full h-11 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white rounded-[12px] text-[14px] font-semibold transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
-          <nav className="p-3 space-y-1 overflow-y-auto">
-            {availableTabs.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    if (tab.disabled) return;
-                    setActiveTab(tab.id);
-                  }}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
-                    tab.disabled // ← ADD THIS CONDITION
-                      ? "opacity-70 cursor-not-allowed text-neutral-600"
-                      : active
-                      ? "bg-red-600 text-white shadow-lg shadow-red-950"
-                      : "text-neutral-400 hover:bg-neutral-800 hover:text-white"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
+        </div>
+      )}
+
+      {/* SIDEBAR (desktop only) */}
+      <aside className="hidden md:flex md:flex-col w-64 bg-[#1C1C1E] border-r border-white/[0.06] justify-between shrink-0">
+        <div>
+          <div className="p-5 border-b border-white/[0.06] flex items-center gap-3">
+            <img
+              src="/logo.svg"
+              alt="Company Logo"
+              className="w-[46px] h-[46px] object-contain shrink-0"
+            />
+            <div className="overflow-hidden">
+              <h2 className="font-semibold text-[14px] text-white truncate">
+                {companyName}
+              </h2>
+              <span className="text-[10px] font-semibold tracking-wider text-white/40 uppercase">
+                {isAdmin ? "Admin Access" : "Manager Access"}
+              </span>
+            </div>
+          </div>
+
+          <nav className="p-3 space-y-4 overflow-y-auto">
+            <div className="space-y-1">
+              <p className="px-3 pt-1 pb-1 text-[10px] font-semibold text-white/30 uppercase tracking-[0.16em]">
+                Attendance
+              </p>
+              {attendanceTabs.map((tab) => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      if (tab.disabled) return;
+                      setActiveTab(tab.id);
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[13px] font-semibold transition-all ${
+                      tab.disabled
+                        ? "opacity-40 cursor-not-allowed text-white/30"
+                        : active
+                        ? "bg-[#7C5CFF] text-white shadow-lg shadow-[#7C5CFF]/20"
+                        : "text-white/60 hover:bg-white/[0.05] hover:text-white"
+                    }`}
+                  >
+                    <Icon className="w-[18px] h-[18px]" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {hasFeedbackAccess && (
+              <div className="space-y-1">
+                <p className="px-3 pt-2 pb-1 text-[10px] font-semibold text-white/30 uppercase tracking-[0.16em]">
+                  Feedback
+                </p>
+                {feedbackTabsList.map((tab) => {
+                  const Icon = tab.icon;
+                  const active = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[13px] font-semibold transition-all ${
+                        active
+                          ? "bg-[#0A84FF] text-white shadow-lg shadow-[#0A84FF]/20"
+                          : "text-white/60 hover:bg-white/[0.05] hover:text-white"
+                      }`}
+                    >
+                      <Icon className="w-[18px] h-[18px]" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </nav>
         </div>
-        <div className="p-4 border-t border-neutral-800">
+
+        <div className="p-4 border-t border-white/[0.06]">
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center space-x-2 bg-neutral-950 hover:bg-red-950/40 border border-neutral-800 hover:border-red-900 text-neutral-400 hover:text-red-400 py-2.5 rounded-xl text-xs font-bold transition-all"
+            className="w-full flex items-center justify-center gap-2 bg-white/[0.04] hover:bg-[#FF453A]/10 border border-white/[0.06] hover:border-[#FF453A]/25 text-white/50 hover:text-[#FF6961] py-2.5 rounded-[12px] text-[12px] font-semibold transition-all"
           >
             <LogOut className="w-4 h-4" />
             <span>LOGOUT</span>
@@ -1755,176 +1878,294 @@ export default function SingleCompanyAdmin({
 
       {/* MAIN */}
       <div className="flex-1 flex flex-col w-full h-full overflow-hidden min-w-0">
-        <header className="h-16 border-b border-neutral-800 bg-neutral-900/50 flex items-center justify-between px-4 sm:px-8 shrink-0">
-          <div className="flex items-center space-x-3">
-            {!mobileShowHome && (
-              <button
-                onClick={() => setMobileShowHome(true)}
-                className="md:hidden p-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-neutral-300 transition-colors"
-                aria-label="Back to menu"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-            )}
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider hidden md:inline">
-                Module /
-              </span>
-              <span className="text-sm font-extrabold text-white capitalize md:hidden">
-                {mobileShowHome
-                  ? isAdmin
-                    ? "Admin Panel"
-                    : "Manager Panel"
-                  : activeTab.replace("-", " ")}
-              </span>
-              <span className="hidden md:inline text-sm font-extrabold text-white capitalize">
+        {/* HEADER */}
+        <header className="h-14 border-b border-white/[0.04] bg-black/70 backdrop-blur-2xl flex items-center justify-between gap-2 px-3 sm:px-8 shrink-0 relative z-30">
+          {/* LEFT */}
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            {/* Mobile: brand mark on home, back button in sections */}
+            <div className="md:hidden flex items-center gap-1.5 min-w-0">
+              {mobileScreen === "home" ? (
+                <>
+                  <img
+                    src="/logo.svg"
+                    alt=""
+                    className="w-7 h-7 object-contain shrink-0"
+                  />
+                  <span className="text-[15px] font-bold text-white tracking-tight truncate">
+                    {companyName}
+                  </span>
+                </>
+              ) : (
+                <button
+                  onClick={handleMobileBack}
+                  className="p-1.5 -ml-1.5 rounded-full text-white/80 hover:text-white hover:bg-white/[0.06] transition-colors active:scale-95 cursor-pointer"
+                  aria-label="Back"
+                >
+                  <ChevronLeft className="w-6 h-6" strokeWidth={2.25} />
+                </button>
+              )}
+            </div>
+
+            {/* Desktop: company + active module */}
+            <div className="hidden md:block min-w-0">
+              <p className="text-[10px] font-semibold text-white/40 uppercase tracking-[0.14em] truncate leading-tight">
+                {companyName}
+              </p>
+              <span className="text-[14px] font-semibold text-white capitalize truncate block leading-tight">
                 {activeTab.replace("-", " ")}
               </span>
             </div>
           </div>
-          <div className="relative">
+
+          {/* Mobile centered title when inside a section */}
+          {mobileScreen !== "home" && (
+            <div className="md:hidden absolute inset-x-0 top-1/2 -translate-y-1/2 text-center pointer-events-none px-20">
+              <span className="text-[15px] font-semibold text-white truncate inline-block max-w-full">
+                {mobileScreen === "attendanceMenu"
+                  ? "Attendance"
+                  : mobileScreen === "feedbackMenu"
+                  ? "Feedback"
+                  : availableTabs.find((t) => t.id === activeTab)?.label ||
+                    activeTab.replace("-", " ")}
+              </span>
+            </div>
+          )}
+
+          {/* RIGHT — avatar */}
+          <div className="relative shrink-0">
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center space-x-2 focus:outline-none"
+              className="relative w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 cursor-pointer"
+              aria-label="Profile"
             >
-              <div className="w-9 h-9 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-300 hover:bg-neutral-700 transition-colors">
-                <User className="w-5 h-5" />
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#8B6EFF] to-[#6B4FE8]" />
+              <div className="absolute inset-[1.5px] rounded-full bg-[#1C1C1E] flex items-center justify-center">
+                <span className="text-[13px] font-bold text-white tracking-tight">
+                  {userInitials}
+                </span>
               </div>
             </button>
+
             {dropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl shadow-black/80 p-2 z-50 animate-popover">
-                <div className="px-3 py-2 border-b border-neutral-800">
-                  <p className="text-sm font-bold text-white">{displayName}</p>
-                  <p className="text-xs text-neutral-400">
-                    {isAdmin ? "Administrator" : "Manager"}
-                  </p>
+              <div className="absolute right-0 mt-3 w-64 bg-[#1C1C1E]/95 backdrop-blur-2xl border border-white/[0.08] rounded-[16px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.9)] p-1.5 z-50">
+                <div className="px-3 py-3 border-b border-white/[0.06] flex items-center gap-3">
+                  <div className="relative w-10 h-10 rounded-full flex items-center justify-center shrink-0">
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#8B6EFF] to-[#6B4FE8]" />
+                    <div className="absolute inset-[1.5px] rounded-full bg-[#1C1C1E] flex items-center justify-center">
+                      <span className="text-[14px] font-bold text-white">
+                        {userInitials}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-white truncate">
+                      {displayName}
+                    </p>
+                    <p className="text-[12px] text-white/50 truncate">
+                      {isAdmin ? "Administrator" : "Manager"}
+                    </p>
+                  </div>
                 </div>
                 <button
                   onClick={onLogout}
-                  className="w-full mt-1 flex items-center space-x-2 px-3 py-2.5 rounded-xl text-xs font-bold text-red-400 hover:bg-red-950/40 transition-all"
+                  className="w-full mt-1 flex items-center gap-2.5 px-3 py-3 rounded-[12px] text-[14px] font-medium text-[#FF6961] hover:bg-[#FF453A]/10 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
-                  <span>Logout</span>
+                  <span>Log out</span>
                 </button>
               </div>
             )}
           </div>
         </header>
 
-        {/* MOBILE HOME GRID — visible only on mobile when no section is open */}
-        {mobileShowHome && (
-          <div className="md:hidden flex-1 overflow-y-auto p-4 w-full space-y-5">
-            {/* Greeting card */}
-            <div className="relative bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 border border-neutral-800 rounded-3xl p-6 overflow-hidden">
-              <div className="absolute -top-16 -right-16 w-48 h-48 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -bottom-20 -left-20 w-56 h-56 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
-              <div className="relative">
-                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
-                  {isAdmin ? "Admin Access" : "Manager Access"}
-                </p>
-                <h2 className="text-2xl font-black text-white mt-1.5 tracking-tight">
-                  {displayName}
-                </h2>
-                <p className="text-xs text-neutral-400 mt-1 truncate">
-                  {companyName}
-                </p>
+        {/* MOBILE: HOME (two big cards) */}
+        {mobileScreen === "home" && (
+          <div className="md:hidden flex-1 overflow-y-auto w-full p-5 space-y-4">
+            <div className="pt-2 pb-4">
+              <p className="text-[11px] font-semibold text-white/40 uppercase tracking-[0.16em]">
+                {isAdmin ? "Admin Access" : "Manager Access"}
+              </p>
+              <h1 className="text-[26px] font-bold text-white mt-1 tracking-tight truncate">
+                {displayName}
+              </h1>
+              <p className="text-[14px] text-white/50 mt-1 truncate">
+                {companyName}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAttendanceTap}
+              className="w-full p-5 rounded-[20px] bg-[#1C1C1E] border border-white/[0.06] active:scale-[0.98] transition-transform text-left"
+            >
+              <div className="flex items-center justify-between">
+                <div className="w-12 h-12 rounded-[14px] bg-[#7C5CFF]/12 border border-[#7C5CFF]/25 flex items-center justify-center">
+                  <CalendarCheck className="w-6 h-6 text-[#A390FF]" />
+                </div>
+                <ChevronRight className="w-5 h-5 text-white/30" />
               </div>
-            </div>
+              <p className="text-[17px] font-semibold text-white mt-4">
+                Attendance
+              </p>
+              <p className="text-[13px] text-white/45 mt-0.5">
+                {attendanceTabs.length} section
+                {attendanceTabs.length !== 1 ? "s" : ""}
+              </p>
+            </button>
 
-            {/* Section grid */}
-            <div className="grid grid-cols-2 gap-3">
-              {availableTabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    disabled={tab.disabled}
-                    onClick={() => {
-                      if (tab.disabled) return;
-                      setActiveTab(tab.id);
-                      setMobileShowHome(false);
-                    }}
-                    className={`relative flex flex-col items-start justify-between gap-5 p-4 rounded-2xl border text-left transition-all duration-200 active:scale-[0.97] ${
-                      tab.disabled
-                        ? "bg-neutral-950/60 border-neutral-900 opacity-50 cursor-not-allowed"
-                        : "bg-neutral-900 border-neutral-800 hover:border-red-600/50 hover:bg-neutral-800/60 cursor-pointer"
-                    }`}
-                  >
-                    <div
-                      className={`p-2.5 rounded-xl border ${
-                        tab.disabled
-                          ? "bg-neutral-900 border-neutral-800 text-neutral-600"
-                          : "bg-red-600/10 border-red-600/20 text-red-400"
-                      }`}
-                    >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <p
-                      className={`text-sm font-bold leading-tight ${
-                        tab.disabled ? "text-neutral-500" : "text-white"
-                      }`}
-                    >
-                      {tab.label}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
+            {hasFeedbackAccess && (
+              <button
+                type="button"
+                onClick={handleFeedbackTap}
+                className="w-full p-5 rounded-[20px] bg-[#1C1C1E] border border-white/[0.06] active:scale-[0.98] transition-transform text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-[14px] bg-[#0A84FF]/12 border border-[#0A84FF]/25 flex items-center justify-center">
+                    <MessageSquare className="w-6 h-6 text-[#0A84FF]" />
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-white/30" />
+                </div>
+                <p className="text-[17px] font-semibold text-white mt-4">
+                  Feedback
+                </p>
+                <p className="text-[13px] text-white/45 mt-0.5">
+                  Customer feedback &amp; analytics
+                </p>
+              </button>
+            )}
 
-            {/* Logout */}
             <button
               type="button"
               onClick={onLogout}
-              className="w-full flex items-center justify-center space-x-2 bg-neutral-900 hover:bg-red-950/40 border border-neutral-800 hover:border-red-900 text-neutral-400 hover:text-red-400 py-3.5 rounded-2xl text-xs font-bold transition-all active:scale-[0.99]"
+              className="w-full mt-3 h-12 rounded-[14px] bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF6961] text-[15px] font-semibold flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
             >
               <LogOut className="w-4 h-4" />
-              <span>LOGOUT</span>
+              Log out
             </button>
           </div>
         )}
 
+        {/* MOBILE: ATTENDANCE MENU */}
+        {mobileScreen === "attendanceMenu" && (
+          <div className="md:hidden flex-1 overflow-y-auto w-full p-5 space-y-3">
+            <div className="pt-1 pb-3">
+              <h1 className="text-[22px] font-bold text-white tracking-tight">
+                Attendance
+              </h1>
+              <p className="text-[13px] text-white/45 mt-0.5">
+                Choose a section
+              </p>
+            </div>
+            {attendanceTabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  disabled={tab.disabled}
+                  onClick={() => {
+                    if (tab.disabled) return;
+                    goToTab(tab.id);
+                  }}
+                  className={`w-full p-4 rounded-[16px] flex items-center gap-4 transition-all text-left active:scale-[0.98] ${
+                    tab.disabled
+                      ? "bg-[#1C1C1E]/50 border border-white/[0.04] opacity-40 cursor-not-allowed"
+                      : "bg-[#1C1C1E] border border-white/[0.06]"
+                  }`}
+                >
+                  <div className="w-11 h-11 rounded-[12px] bg-white/[0.05] border border-white/[0.08] flex items-center justify-center shrink-0">
+                    <Icon className="w-5 h-5 text-[#A390FF]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[16px] font-semibold text-white truncate">
+                      {tab.label}
+                    </p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-white/25 shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* MOBILE: FEEDBACK MENU */}
+        {mobileScreen === "feedbackMenu" && (
+          <div className="md:hidden flex-1 overflow-y-auto w-full p-5 space-y-3">
+            <div className="pt-1 pb-3">
+              <h1 className="text-[22px] font-bold text-white tracking-tight">
+                Feedback
+              </h1>
+              <p className="text-[13px] text-white/45 mt-0.5">
+                Customer feedback &amp; analytics
+              </p>
+            </div>
+            {feedbackTabsList.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => goToTab(tab.id)}
+                  className="w-full p-4 rounded-[16px] bg-[#1C1C1E] border border-white/[0.06] flex items-center gap-4 transition-all text-left active:scale-[0.98]"
+                >
+                  <div className="w-11 h-11 rounded-[12px] bg-[#0A84FF]/10 border border-[#0A84FF]/20 flex items-center justify-center shrink-0">
+                    <Icon className="w-5 h-5 text-[#0A84FF]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[16px] font-semibold text-white truncate">
+                      {tab.label}
+                    </p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-white/25 shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* MAIN CONTENT */}
         <main
           className={`flex-1 overflow-y-auto p-4 sm:p-8 w-full ${
-            mobileShowHome ? "hidden md:block" : "block"
+            mobileScreen === "section" ? "block" : "hidden md:block"
           }`}
         >
           {/* EMPLOYEES TAB */}
           {activeTab === "employees" && isAdmin && (
-            <div className="space-y-6 w-full">
+            <div className="space-y-5 w-full">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
-                  <h3 className="text-lg font-extrabold text-white">
+                  <h3 className="text-[20px] sm:text-[18px] font-bold text-white">
                     Employees
                   </h3>
-                  <p className="text-xs text-neutral-400 mt-0.5">
+                  <p className="text-[13px] text-white/50 mt-0.5">
                     {employees.length} registered staff members
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={openAddEmployeeModal}
-                  className="h-11 bg-red-600 hover:bg-red-700 text-white font-bold px-5 rounded-xl text-xs tracking-wider uppercase flex items-center gap-2 transition-all shadow-lg shadow-red-950/60 active:scale-[0.98] cursor-pointer"
+                  className="h-11 bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] text-white font-semibold px-5 rounded-[12px] text-[14px] sm:text-[13px] tracking-wide flex items-center gap-2 transition-all shadow-lg shadow-[#7C5CFF]/25 active:scale-[0.98] cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Add Employee</span>
                 </button>
               </div>
+
               {loading ? (
-                <p className="text-xs text-neutral-500">
+                <p className="text-[14px] text-white/50">
                   Loading workforce records...
                 </p>
               ) : employees.length === 0 ? (
-                <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl text-center w-full">
-                  <p className="text-sm text-neutral-400">
+                <div className="bg-[#1C1C1E] border border-white/[0.06] p-8 rounded-[20px] text-center w-full">
+                  <p className="text-[14px] text-white/60">
                     No employees registered for this company yet.
                   </p>
                 </div>
               ) : (
-                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden w-full">
+                <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] overflow-hidden w-full">
                   <div className="overflow-x-auto w-full">
-                    <table className="w-full text-left text-sm text-neutral-300">
-                      <thead className="bg-neutral-950/60 text-[10px] text-neutral-500 uppercase tracking-wider border-b border-neutral-800">
+                    <table className="w-full text-left text-[13px] text-white/85">
+                      <thead className="bg-white/[0.02] text-[10px] text-white/40 uppercase tracking-wider border-b border-white/[0.06]">
                         <tr>
                           <th className="p-4 font-semibold w-12">#</th>
                           <th className="p-4 font-semibold">Employee</th>
@@ -1936,22 +2177,22 @@ export default function SingleCompanyAdmin({
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-neutral-800">
+                      <tbody className="divide-y divide-white/[0.04]">
                         {employees.map((emp, idx) => (
                           <tr
                             key={emp.id}
-                            className="hover:bg-neutral-800/40 transition-colors"
+                            className="hover:bg-white/[0.02] transition-colors"
                           >
-                            <td className="p-4 text-neutral-500 font-mono text-xs">
+                            <td className="p-4 text-white/40 font-mono text-[12px]">
                               {idx + 1}
                             </td>
                             <td className="p-4">
                               <div className="flex items-center gap-3">
                                 <div
-                                  className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold text-sm shrink-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] ${
+                                  className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold text-[14px] shrink-0 ${
                                     emp.is_active
-                                      ? "bg-gradient-to-br from-red-600/30 to-red-500/10 border-red-500/30 text-red-400"
-                                      : "bg-neutral-900 border-neutral-700 text-neutral-500"
+                                      ? "bg-[#7C5CFF]/15 border-[#7C5CFF]/25 text-[#A390FF]"
+                                      : "bg-white/[0.04] border-white/[0.08] text-white/40"
                                   }`}
                                 >
                                   {emp.name?.charAt(0).toUpperCase()}
@@ -1962,24 +2203,24 @@ export default function SingleCompanyAdmin({
                                       className={`font-semibold ${
                                         emp.is_active
                                           ? "text-white"
-                                          : "text-neutral-500 line-through"
+                                          : "text-white/40 line-through"
                                       }`}
                                     >
                                       {emp.name}
                                     </p>
                                     {!emp.is_active && (
-                                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-400">
+                                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-white/50">
                                         Inactive
                                       </span>
                                     )}
                                     {emp.is_manager && (
-                                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#0A84FF]/10 border border-[#0A84FF]/25 text-[#0A84FF]">
                                         Manager
                                       </span>
                                     )}
                                   </div>
                                   {emp.cnic && (
-                                    <p className="text-[10px] text-neutral-500 font-mono">
+                                    <p className="text-[10px] text-white/40 font-mono">
                                       CNIC: {emp.cnic}
                                     </p>
                                   )}
@@ -1989,14 +2230,14 @@ export default function SingleCompanyAdmin({
                             <td className="p-4">
                               <div className="space-y-0.5">
                                 {emp.mobile && (
-                                  <p className="text-xs text-neutral-300 font-mono flex items-center gap-1.5">
-                                    <Phone className="w-3 h-3 text-neutral-500" />
+                                  <p className="text-[12px] text-white/85 font-mono flex items-center gap-1.5">
+                                    <Phone className="w-3 h-3 text-white/40" />
                                     {emp.mobile}
                                   </p>
                                 )}
                                 {emp.emergency_contact && (
-                                  <p className="text-[10px] text-neutral-500 font-mono flex items-center gap-1.5">
-                                    <span className="text-neutral-600">
+                                  <p className="text-[10px] text-white/40 font-mono flex items-center gap-1.5">
+                                    <span className="text-white/30">
                                       Emergency:
                                     </span>
                                     {emp.emergency_contact}
@@ -2004,13 +2245,13 @@ export default function SingleCompanyAdmin({
                                 )}
                               </div>
                             </td>
-                            <td className="p-4 text-emerald-400 font-semibold font-mono">
+                            <td className="p-4 text-[#30D158] font-semibold font-mono">
                               Rs.{" "}
                               {Number(emp.base_salary).toLocaleString("en-PK", {
                                 minimumFractionDigits: 2,
                               })}
                             </td>
-                            <td className="p-4 text-xs text-neutral-400">
+                            <td className="p-4 text-[12px] text-white/60">
                               {emp.date_of_joining
                                 ? formatDate(emp.date_of_joining)
                                 : "—"}
@@ -2023,15 +2264,14 @@ export default function SingleCompanyAdmin({
                                   }
                                   className={`relative w-11 h-6 rounded-full transition-colors duration-200 cursor-pointer shrink-0 ${
                                     emp.is_active
-                                      ? "bg-emerald-600"
-                                      : "bg-neutral-700"
+                                      ? "bg-[#30D158]"
+                                      : "bg-white/[0.12]"
                                   }`}
                                   title={
                                     emp.is_active
                                       ? "Active — click to deactivate"
                                       : "Inactive — click to activate"
                                   }
-                                  aria-pressed={emp.is_active}
                                 >
                                   <span
                                     className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ${
@@ -2043,20 +2283,20 @@ export default function SingleCompanyAdmin({
                                 </button>
                                 <button
                                   onClick={() => openEmployeeProfile(emp)}
-                                  className="p-2 bg-neutral-950 hover:bg-neutral-800 text-blue-400 border border-neutral-800 rounded-xl transition-colors group/btn"
+                                  className="p-2 bg-white/[0.04] hover:bg-white/[0.08] text-[#0A84FF] border border-white/[0.08] rounded-[10px] transition-colors"
                                   title="View Full Profile"
                                 >
-                                  <User className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                                  <User className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => openEditEmployeeModal(emp)}
-                                  className="p-2 bg-neutral-950 hover:bg-neutral-800 text-blue-400 border border-neutral-800 rounded-xl transition-colors"
+                                  className="p-2 bg-white/[0.04] hover:bg-white/[0.08] text-[#0A84FF] border border-white/[0.08] rounded-[10px] transition-colors"
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteEmployee(emp.id)}
-                                  className="p-2 bg-neutral-950 hover:bg-neutral-800 text-red-400 border border-neutral-800 rounded-xl transition-colors"
+                                  className="p-2 bg-white/[0.04] hover:bg-[#FF453A]/10 text-[#FF6961] border border-white/[0.08] hover:border-[#FF453A]/25 rounded-[10px] transition-colors"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -2072,232 +2312,18 @@ export default function SingleCompanyAdmin({
             </div>
           )}
 
-          {/* EMPLOYEE PROFILE MODAL - MEDIUM SIZED */}
-          {profileModalOpen && selectedEmployee && isAdmin && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-              <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-                {/* Decorative Glow */}
-                <div className="absolute -top-16 -right-16 w-48 h-48 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
-
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800 bg-neutral-900/50 relative z-10 shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
-                      <User className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-white tracking-tight">
-                        Employee Profile
-                      </h3>
-                      <p className="text-xs text-neutral-400">
-                        Complete details and contact information
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeEmployeeProfile}
-                    className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Scrollable Modal Content */}
-                <div className="p-6 overflow-y-auto space-y-6 flex-1 scrollbar-thin scrollbar-thumb-neutral-800">
-                  {/* Employee Banner Card */}
-                  <div className="bg-gradient-to-r from-neutral-800/60 to-neutral-800/30 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4 min-w-0">
-                      <div className="w-14 h-14 rounded-xl bg-red-600/20 border border-red-500/30 flex items-center justify-center text-xl font-bold text-red-400 shrink-0">
-                        {selectedEmployee.name?.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-base font-bold text-white truncate">
-                          {selectedEmployee.name}
-                        </h4>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-neutral-400">
-                          {/* <span className="flex items-center gap-1">
-                            <Briefcase className="w-3.5 h-3.5 text-neutral-500" />
-                            ID: #{selectedEmployee.id?.slice(0, 8)}
-                          </span> */}
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3.5 h-3.5 text-neutral-500" />
-                            Joined:{" "}
-                            {formatDate(selectedEmployee.date_of_joining)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-right shrink-0 self-stretch sm:self-auto flex sm:block items-center justify-between">
-                      <span className="text-[10px] font-semibold text-emerald-400/80 uppercase tracking-wider block">
-                        Current Salary
-                      </span>
-                      <span className="text-base font-bold text-emerald-400 font-mono">
-                        Rs.{" "}
-                        {Number(selectedEmployee.base_salary).toLocaleString(
-                          "en-PK",
-                          { minimumFractionDigits: 0 }
-                        )}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Personal Information */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-red-400" />
-                      <h5 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
-                        Personal Information
-                      </h5>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Father Name
-                        </span>
-                        <span className="text-sm font-medium text-neutral-100">
-                          {selectedEmployee.father_name || "Not provided"}
-                        </span>
-                      </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Address
-                        </span>
-                        <span className="text-sm font-medium text-neutral-100 block break-words whitespace-normal leading-relaxed">
-                          {selectedEmployee.address || "Not provided"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Identification & Contact */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-red-400" />
-                      <h5 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
-                        Identification & Contact
-                      </h5>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          CNIC
-                        </span>
-                        <span className="text-sm font-mono font-medium text-neutral-100">
-                          {selectedEmployee.cnic || "Not provided"}
-                        </span>
-                      </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Father CNIC
-                        </span>
-                        <span className="text-sm font-mono font-medium text-neutral-100">
-                          {selectedEmployee.father_cnic || "Not provided"}
-                        </span>
-                      </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Mobile Number
-                        </span>
-                        <span className="text-sm font-mono font-medium text-neutral-100">
-                          {selectedEmployee.mobile || "Not provided"}
-                        </span>
-                      </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Emergency Contact
-                        </span>
-                        <span className="text-sm font-mono font-medium text-neutral-100">
-                          {selectedEmployee.emergency_contact || "Not provided"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Employment Details */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="w-4 h-4 text-red-400" />
-                      <h5 className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
-                        Employment Details
-                      </h5>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Date of Joining
-                        </span>
-                        <span className="text-sm font-medium text-neutral-100">
-                          {formatDate(selectedEmployee.date_of_joining)}
-                        </span>
-                      </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Reference
-                        </span>
-                        <span className="text-sm font-medium text-neutral-100">
-                          {selectedEmployee.reference || "Not provided"}
-                        </span>
-                      </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Starting Salary
-                        </span>
-                        <span className="text-sm font-mono font-medium text-neutral-100">
-                          {selectedEmployee.starting_salary
-                            ? `Rs. ${Number(
-                                selectedEmployee.starting_salary
-                              ).toLocaleString("en-PK", {
-                                minimumFractionDigits: 0,
-                              })}`
-                            : "Not provided"}
-                        </span>
-                      </div>
-                      <div className="bg-neutral-950/50 border border-neutral-800/80 rounded-xl p-3.5">
-                        <span className="text-[11px] font-medium text-neutral-400 block mb-0.5">
-                          Base Salary
-                        </span>
-                        <span className="text-sm font-mono font-medium text-emerald-400">
-                          Rs.{" "}
-                          {Number(selectedEmployee.base_salary).toLocaleString(
-                            "en-PK",
-                            { minimumFractionDigits: 0 }
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-neutral-800 bg-neutral-900/50 shrink-0">
-                  <button
-                    type="button"
-                    onClick={closeEmployeeProfile}
-                    className="w-full h-10 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* DAILY ATTENDANCE TAB */}
           {activeTab === "daily" && (
-            <div className="space-y-6 w-full">
-              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4 w-full">
-                {/* Admin-only toggle to grant managers date-picking */}
+            <div className="space-y-5 w-full">
+              <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4 w-full">
                 {isAdmin && (
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-800">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/[0.06]">
                     <div>
-                      <p className="text-xs font-bold text-white uppercase tracking-wider">
-                        Manager Attendance Access
+                      <p className="text-[14px] sm:text-[13px] font-semibold text-white tracking-wide">
+                        Manager Date Access
                       </p>
-                      <p className="text-[11px] text-neutral-500 mt-0.5">
-                        When ON, managers can mark/edit attendance for any date,
-                        month, or year.
+                      <p className="text-[12px] text-white/50 mt-0.5">
+                        When ON, managers can mark/edit attendance for any date.
                       </p>
                     </div>
                     <button
@@ -2305,15 +2331,10 @@ export default function SingleCompanyAdmin({
                       onClick={toggleManagersCanPickDates}
                       className={`relative shrink-0 w-14 h-8 rounded-full transition-colors duration-200 cursor-pointer ${
                         managersCanPickDates
-                          ? "bg-emerald-600"
-                          : "bg-neutral-700"
+                          ? "bg-[#30D158]"
+                          : "bg-white/[0.12]"
                       }`}
                       aria-pressed={managersCanPickDates}
-                      title={
-                        managersCanPickDates
-                          ? "Managers CAN pick dates"
-                          : "Managers limited to today"
-                      }
                     >
                       <span
                         className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-200 ${
@@ -2322,9 +2343,6 @@ export default function SingleCompanyAdmin({
                             : "translate-x-0"
                         }`}
                       />
-                      <span className="sr-only">
-                        {managersCanPickDates ? "ON" : "OFF"}
-                      </span>
                     </button>
                   </div>
                 )}
@@ -2351,10 +2369,10 @@ export default function SingleCompanyAdmin({
                     </>
                   ) : (
                     <div className="col-span-3 flex items-center justify-center gap-3 py-2">
-                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
-                        Today’s Date:
+                      <span className="text-[11px] font-semibold text-white/50 uppercase tracking-wider">
+                        Today's Date:
                       </span>
-                      <span className="text-sm font-mono text-white">
+                      <span className="text-[14px] font-mono text-white">
                         {currentDate.toLocaleDateString("en-GB", {
                           day: "numeric",
                           month: "long",
@@ -2367,16 +2385,15 @@ export default function SingleCompanyAdmin({
               </div>
 
               {isLocked && !isAdmin && !managersCanPickDates && (
-                <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl p-4 text-center text-amber-300 text-sm font-medium">
-                  <CheckCircle2 className="w-5 h-5 inline-block mr-2 text-amber-400" />
-                  Today’s attendance has already been marked. You cannot edit it
-                  again.
+                <div className="bg-[#FF9F0A]/10 border border-[#FF9F0A]/30 rounded-[14px] p-4 text-center text-[#FF9F0A] text-[14px] font-medium">
+                  <CheckCircle2 className="w-5 h-5 inline-block mr-2" />
+                  Today's attendance has already been marked.
                 </div>
               )}
 
               {employees.length === 0 ? (
-                <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl text-center w-full">
-                  <p className="text-sm text-neutral-400">
+                <div className="bg-[#1C1C1E] border border-white/[0.06] p-8 rounded-[20px] text-center w-full">
+                  <p className="text-[14px] text-white/60">
                     No employees found to take attendance.
                   </p>
                 </div>
@@ -2385,8 +2402,6 @@ export default function SingleCompanyAdmin({
                   {employees
                     .filter((emp) => {
                       if (emp.is_active) return true;
-                      // Inactive employees only appear for dates where they
-                      // already have a record (so their past data stays visible).
                       return dailyStatus[emp.id] !== undefined;
                     })
                     .map((emp) => {
@@ -2394,21 +2409,21 @@ export default function SingleCompanyAdmin({
                       return (
                         <div
                           key={emp.id}
-                          className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
+                          className="bg-[#1C1C1E] border border-white/[0.06] p-4 rounded-[20px] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-white/[0.10] transition-colors"
                         >
-                          <div>
-                            <span className="font-bold text-sm text-white block">
+                          <div className="min-w-0">
+                            <span className="font-semibold text-[15px] sm:text-[14px] text-white block truncate">
                               {emp.name}
                             </span>
                             {isAdmin && (
-                              <span className="text-xs text-neutral-500 font-mono">
+                              <span className="text-[12px] text-white/40 font-mono">
                                 Rs. {Number(emp.base_salary).toLocaleString()}
                               </span>
                             )}
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-3">
-                            <div className="flex gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex gap-1.5">
                               {["full", "half", "holiday", "absent"].map(
                                 (st) => (
                                   <button
@@ -2418,14 +2433,14 @@ export default function SingleCompanyAdmin({
                                       handleStatusChange(emp.id, st)
                                     }
                                     disabled={isLocked && !managersCanPickDates}
-                                    className={`px-3.5 py-2 rounded-xl text-xs font-bold capitalize border transition-all ${
+                                    className={`px-3.5 py-2 rounded-[10px] text-[13px] font-semibold capitalize border transition-all ${
                                       currentStatus === st
-                                        ? "bg-red-600 border-red-500 text-white shadow-md"
-                                        : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white"
+                                        ? "bg-[#7C5CFF] border-[#7C5CFF] text-white"
+                                        : "bg-white/[0.03] border-white/[0.08] text-white/70 hover:text-white hover:border-white/[0.14]"
                                     } ${
-                                      isLocked
+                                      isLocked && !managersCanPickDates
                                         ? "opacity-50 cursor-not-allowed"
-                                        : ""
+                                        : "cursor-pointer"
                                     }`}
                                   >
                                     {st}
@@ -2443,9 +2458,9 @@ export default function SingleCompanyAdmin({
                                   [emp.id]: val,
                                 }))
                               }
-                              placeholder="Check-In Time"
+                              placeholder="Check-In"
                               className="w-44"
-                              disabled={isLocked}
+                              disabled={isLocked && !managersCanPickDates}
                             />
                           </div>
                         </div>
@@ -2454,10 +2469,10 @@ export default function SingleCompanyAdmin({
                   <button
                     onClick={saveDailyAttendance}
                     disabled={isLocked && !managersCanPickDates}
-                    className={`w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white shadow-lg transition-colors mt-4 active:scale-[0.99] ${
+                    className={`w-full h-12 rounded-[14px] font-semibold text-[15px] tracking-wide text-white transition-all mt-4 active:scale-[0.99] ${
                       isLocked && !managersCanPickDates
-                        ? "bg-neutral-700 cursor-not-allowed shadow-none"
-                        : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-950"
+                        ? "bg-white/[0.06] cursor-not-allowed text-white/40"
+                        : "bg-gradient-to-b from-[#42E366] to-[#28B94D] hover:from-[#52E876] hover:to-[#30D158] shadow-lg shadow-[#30D158]/20"
                     }`}
                   >
                     {isLocked && !managersCanPickDates
@@ -2471,22 +2486,22 @@ export default function SingleCompanyAdmin({
 
           {/* ATTENDANCE HISTORY TAB */}
           {activeTab === "history" && (
-            <div className="space-y-6 w-full">
-              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4 w-full">
+            <div className="space-y-5 w-full">
+              <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4 w-full">
                 <div className="flex flex-col sm:flex-row items-end justify-between gap-4">
                   <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
+                      <label className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 block">
                         Search Employee
                       </label>
                       <div className="relative flex items-center">
-                        <Search className="w-4 h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <Search className="w-4 h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           type="text"
                           placeholder="Type employee name..."
                           value={historySearch}
                           onChange={(e) => setHistorySearch(e.target.value)}
-                          className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl pl-10 pr-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none"
+                          className="w-full h-11 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] pl-10 pr-3.5 text-[15px] text-white placeholder-white/30 transition-all outline-none"
                         />
                       </div>
                     </div>
@@ -2495,7 +2510,7 @@ export default function SingleCompanyAdmin({
                         label="Filter By Date"
                         value={historyDateFilter}
                         onChange={(val) => setHistoryDateFilter(val)}
-                        placeholder="Select date to filter..."
+                        placeholder="Select date..."
                       />
                     </div>
                   </div>
@@ -2503,9 +2518,9 @@ export default function SingleCompanyAdmin({
                     <button
                       type="button"
                       onClick={downloadDailyAttendancePDF}
-                      className="w-full sm:w-auto h-11 bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-white font-bold px-4 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shrink-0 cursor-pointer active:scale-[0.99]"
+                      className="w-full sm:w-auto h-11 bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] text-white font-semibold px-4 rounded-[12px] text-[13px] tracking-wide flex items-center justify-center gap-2 transition-all shrink-0 cursor-pointer active:scale-[0.99] shadow-lg shadow-[#7C5CFF]/20"
                     >
-                      <FileText className="w-4 h-4 text-red-500" />
+                      <FileText className="w-4 h-4" />
                       <span>Print Report</span>
                     </button>
                   </div>
@@ -2513,13 +2528,13 @@ export default function SingleCompanyAdmin({
               </div>
 
               {historyLoading ? (
-                <p className="text-xs text-neutral-500">
+                <p className="text-[14px] text-white/50">
                   Fetching attendance logs...
                 </p>
-              ) : filteredHistory.length === 0 ? (
-                <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl text-center w-full">
-                  <p className="text-sm text-neutral-400">
-                    No attendance history records found matching your query.
+              ) : groupedHistory.length === 0 ? (
+                <div className="bg-[#1C1C1E] border border-white/[0.06] p-8 rounded-[20px] text-center w-full">
+                  <p className="text-[14px] text-white/60">
+                    No attendance history records found.
                   </p>
                 </div>
               ) : (
@@ -2531,29 +2546,29 @@ export default function SingleCompanyAdmin({
                     return (
                       <div
                         key={empId}
-                        className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden w-full hover:border-neutral-700 transition-colors"
+                        className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] overflow-hidden w-full hover:border-white/[0.10] transition-colors"
                       >
                         <button
                           type="button"
                           onClick={() =>
                             setExpandedHistoryEmp(isOpen ? null : empId)
                           }
-                          className="w-full flex items-center justify-between gap-3 p-4 hover:bg-neutral-800/40 transition-colors text-left cursor-pointer"
+                          className="w-full flex items-center justify-between gap-3 p-4 hover:bg-white/[0.02] transition-colors text-left cursor-pointer"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <ChevronDown
-                              className={`w-4 h-4 text-neutral-400 shrink-0 transition-transform duration-200 ${
+                              className={`w-4 h-4 text-white/50 shrink-0 transition-transform duration-200 ${
                                 isOpen ? "rotate-0" : "-rotate-90"
                               }`}
                             />
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-600/30 to-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 font-bold text-sm shrink-0">
+                            <div className="w-10 h-10 rounded-full bg-[#7C5CFF]/15 border border-[#7C5CFF]/25 flex items-center justify-center text-[#A390FF] font-bold text-[14px] shrink-0">
                               {initial}
                             </div>
                             <div className="min-w-0">
-                              <p className="font-bold text-sm text-white truncate">
+                              <p className="font-semibold text-[15px] sm:text-[14px] text-white truncate">
                                 {empName}
                               </p>
-                              <p className="text-[10px] text-neutral-500 font-mono truncate">
+                              <p className="text-[11px] text-white/40 font-mono truncate">
                                 {emp?.cnic
                                   ? `CNIC: ${emp.cnic}`
                                   : emp?.mobile
@@ -2562,42 +2577,42 @@ export default function SingleCompanyAdmin({
                               </p>
                             </div>
                           </div>
-                          <span className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-neutral-950 border border-neutral-800 text-neutral-300">
+                          <span className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-white/[0.03] border border-white/[0.08] text-white/70">
                             {records.length}{" "}
                             {records.length === 1 ? "record" : "records"}
                           </span>
                         </button>
 
                         {isOpen && (
-                          <div className="border-t border-neutral-800 bg-neutral-950/40">
+                          <div className="border-t border-white/[0.06] bg-white/[0.01]">
                             <div className="overflow-x-auto w-full">
-                              <table className="w-full text-left text-xs text-neutral-300">
-                                <thead className="bg-neutral-950/80 uppercase text-[10px] text-neutral-500 tracking-wider border-b border-neutral-800">
+                              <table className="w-full text-left text-[13px] text-white/85">
+                                <thead className="bg-white/[0.02] uppercase text-[10px] text-white/40 tracking-wider border-b border-white/[0.06]">
                                   <tr>
                                     <th className="p-3">Date</th>
                                     <th className="p-3">Status</th>
-                                    <th className="p-3">Check‑in Time</th>
+                                    <th className="p-3">Check-in</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-neutral-800">
+                                <tbody className="divide-y divide-white/[0.04]">
                                   {records.map((rec) => (
                                     <tr
                                       key={rec.id}
-                                      className="hover:bg-neutral-800/40 transition-colors"
+                                      className="hover:bg-white/[0.02] transition-colors"
                                     >
                                       <td className="p-3 font-mono text-white">
                                         {rec.date}
                                       </td>
                                       <td className="p-3">
                                         <span
-                                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${
                                             rec.status === "full"
-                                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                              ? "bg-[#30D158]/10 text-[#30D158] border-[#30D158]/25"
                                               : rec.status === "half"
-                                              ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                                              ? "bg-[#FFD60A]/10 text-[#FFD60A] border-[#FFD60A]/25"
                                               : rec.status === "holiday"
-                                              ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                                              : "bg-red-500/10 text-red-400 border border-red-500/20"
+                                              ? "bg-[#0A84FF]/10 text-[#0A84FF] border-[#0A84FF]/25"
+                                              : "bg-[#FF453A]/10 text-[#FF6961] border-[#FF453A]/25"
                                           }`}
                                         >
                                           {rec.status}
@@ -2623,8 +2638,8 @@ export default function SingleCompanyAdmin({
 
           {/* BULK ATTENDANCE TAB */}
           {activeTab === "bulk" && isAdmin && (
-            <div className="space-y-6 w-full">
-              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+            <div className="space-y-5 w-full">
+              <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <CustomMonthPicker
                   label="Month"
                   value={selectedMonth}
@@ -2638,7 +2653,7 @@ export default function SingleCompanyAdmin({
               </div>
 
               {employees.length === 0 ? (
-                <p className="text-xs text-neutral-500">
+                <p className="text-[14px] text-white/50">
                   No employees available for bulk attendance.
                 </p>
               ) : (
@@ -2648,13 +2663,13 @@ export default function SingleCompanyAdmin({
                     .map((emp) => (
                       <div
                         key={emp.id}
-                        className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
+                        className="bg-[#1C1C1E] border border-white/[0.06] p-4 rounded-[20px] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-white/[0.10] transition-colors"
                       >
                         <div className="min-w-0">
-                          <span className="font-bold text-sm text-white block truncate">
+                          <span className="font-semibold text-[15px] text-white block truncate">
                             {emp.name}
                           </span>
-                          <span className="text-xs text-neutral-500 font-mono">
+                          <span className="text-[12px] text-white/40 font-mono">
                             Rs. {Number(emp.base_salary).toLocaleString()}
                           </span>
                         </div>
@@ -2674,18 +2689,18 @@ export default function SingleCompanyAdmin({
                         />
                       </div>
                     ))}
-                  <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                  <div className="flex flex-col sm:flex-row gap-3 pt-4">
                     <button
                       onClick={saveBulkAttendance}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 py-3.5 rounded-xl font-bold text-xs uppercase text-white shadow-lg transition-colors active:scale-[0.99]"
+                      className="flex-1 h-12 bg-gradient-to-b from-[#42E366] to-[#28B94D] hover:from-[#52E876] hover:to-[#30D158] rounded-[14px] font-semibold text-[14px] text-white shadow-lg shadow-[#30D158]/20 transition-colors active:scale-[0.99]"
                     >
-                      Save bulk attendance
+                      Save Bulk Attendance
                     </button>
                     <button
                       onClick={generateBulkReport}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 py-3.5 rounded-xl font-bold text-xs uppercase text-white shadow-lg transition-colors active:scale-[0.99]"
+                      className="flex-1 h-12 bg-gradient-to-b from-[#3B9CFF] to-[#0A84FF] hover:from-[#4BAAFF] hover:to-[#0A84FF] rounded-[14px] font-semibold text-[14px] text-white shadow-lg shadow-[#0A84FF]/20 transition-colors active:scale-[0.99]"
                     >
-                      Generate bulk report
+                      Generate Bulk Report
                     </button>
                   </div>
                 </div>
@@ -2694,10 +2709,10 @@ export default function SingleCompanyAdmin({
               {bulkReports.length > 0 && (
                 <div
                   id="bulkPrintArea"
-                  className="space-y-4 border-t border-neutral-800 pt-6 w-full"
+                  className="space-y-4 border-t border-white/[0.06] pt-6 w-full"
                 >
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-                    <h3 className="font-bold text-base text-white">
+                    <h3 className="font-bold text-[16px] text-white">
                       Bulk Payroll Summary
                     </h3>
                     <button
@@ -2707,53 +2722,53 @@ export default function SingleCompanyAdmin({
                           "bulkPrintArea"
                         )
                       }
-                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center space-x-2 transition-colors"
+                      className="w-full sm:w-auto bg-gradient-to-b from-[#3B9CFF] to-[#0A84FF] hover:from-[#4BAAFF] hover:to-[#0A84FF] px-4 py-2.5 rounded-[12px] text-[13px] font-semibold text-white flex items-center justify-center gap-2 transition-colors"
                     >
                       <Printer className="w-4 h-4" />
-                      <span>Print report</span>
+                      <span>Print Report</span>
                     </button>
                   </div>
                   {bulkReports.map((r, idx) => (
                     <div
                       key={r.id}
-                      className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl space-y-2 text-xs text-neutral-300"
+                      className="bg-[#1C1C1E] border border-white/[0.06] p-5 rounded-[20px] space-y-2 text-[13px] text-white/85"
                     >
-                      <h4 className="font-bold text-base text-red-500">
-                        <span className="inline-block w-6 text-neutral-500 font-mono">
+                      <h4 className="font-bold text-[15px] text-[#A390FF]">
+                        <span className="inline-block w-6 text-white/40 font-mono">
                           {idx + 1}.
                         </span>
                         {r.name}
                       </h4>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-950 p-3 rounded-xl border border-neutral-800">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white/[0.02] p-3 rounded-[12px] border border-white/[0.06]">
                         <div>
-                          <span className="text-neutral-500 block">
+                          <span className="text-white/40 block text-[11px]">
                             Base Salary
                           </span>
-                          <span className="font-mono text-white">
+                          <span className="font-mono text-white text-[13px]">
                             Rs. {Number(r.base_salary).toFixed(2)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-neutral-500 block">
+                          <span className="text-white/40 block text-[11px]">
                             Days / Worked
                           </span>
-                          <span className="text-white">
-                            {r.totalDays} Total / {r.work} Work
+                          <span className="text-white text-[13px]">
+                            {r.totalDays} / {r.work}
                           </span>
                         </div>
                         <div>
-                          <span className="text-neutral-500 block">
+                          <span className="text-white/40 block text-[11px]">
                             Total Pay
                           </span>
-                          <span className="font-mono font-bold text-emerald-400">
+                          <span className="font-mono font-bold text-[#30D158] text-[13px]">
                             Rs. {r.pay.toFixed(2)}
                           </span>
                         </div>
                         <div>
-                          <span className="text-neutral-500 block">
+                          <span className="text-white/40 block text-[11px]">
                             Balance
                           </span>
-                          <span className="font-mono font-bold text-yellow-500">
+                          <span className="font-mono font-bold text-[#FFD60A] text-[13px]">
                             Rs. {r.bal.toFixed(2)}
                           </span>
                         </div>
@@ -2767,8 +2782,8 @@ export default function SingleCompanyAdmin({
 
           {/* SALARY REPORTS TAB */}
           {activeTab === "reports" && isAdmin && (
-            <div className="space-y-6 w-full">
-              <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl grid grid-cols-1 sm:grid-cols-3 gap-4 items-end w-full">
+            <div className="space-y-5 w-full">
+              <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] grid grid-cols-1 sm:grid-cols-3 gap-4 items-end w-full">
                 <CustomMonthPicker
                   label="Month"
                   value={selectedMonth}
@@ -2782,7 +2797,7 @@ export default function SingleCompanyAdmin({
                 <button
                   type="button"
                   onClick={generateMonthlyReport}
-                  className="h-11 bg-red-600 hover:bg-red-700 px-6 rounded-xl font-bold text-xs uppercase tracking-wider text-white shadow-lg shadow-red-950/60 transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
+                  className="h-12 bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] px-6 rounded-[14px] font-semibold text-[14px] text-white shadow-lg shadow-[#7C5CFF]/25 transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
                 >
                   <FileSpreadsheet className="w-4 h-4" />
                   <span>Generate Report</span>
@@ -2790,13 +2805,15 @@ export default function SingleCompanyAdmin({
               </div>
 
               {monthlyReports.length > 0 && (
-                <div id="monthlyPrintArea" className="space-y-6 w-full">
+                <div id="monthlyPrintArea" className="space-y-5 w-full">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                     <div>
-                      <h3 className="font-bold text-base sm:text-lg text-white">
+                      <h3 className="font-bold text-[18px] sm:text-[16px] text-white">
                         {months[selectedMonth]} {selectedYear} Payroll Report
                       </h3>
-                      <p className="text-xs text-neutral-500">{companyName}</p>
+                      <p className="text-[12px] text-white/40 mt-0.5">
+                        {companyName}
+                      </p>
                     </div>
                     <button
                       onClick={() =>
@@ -2805,17 +2822,17 @@ export default function SingleCompanyAdmin({
                           "monthlyPrintArea"
                         )
                       }
-                      className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 px-4 py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center space-x-2 transition-colors"
+                      className="w-full sm:w-auto bg-gradient-to-b from-[#3B9CFF] to-[#0A84FF] hover:from-[#4BAAFF] hover:to-[#0A84FF] px-4 py-2.5 rounded-[12px] text-[13px] font-semibold text-white flex items-center justify-center gap-2 transition-colors"
                     >
                       <Printer className="w-4 h-4" />
                       <span>Print / Save PDF</span>
                     </button>
                   </div>
 
-                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden w-full">
+                  <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] overflow-hidden w-full">
                     <div className="overflow-x-auto w-full">
-                      <table className="w-full text-left text-xs text-neutral-300">
-                        <thead className="bg-neutral-950 uppercase text-[10px] text-neutral-400 tracking-wider border-b border-neutral-800">
+                      <table className="w-full text-left text-[13px] text-white/85">
+                        <thead className="bg-white/[0.02] uppercase text-[10px] text-white/40 tracking-wider border-b border-white/[0.06]">
                           <tr>
                             <th className="p-4 w-12">#</th>
                             <th className="p-4">Employee</th>
@@ -2828,19 +2845,19 @@ export default function SingleCompanyAdmin({
                             <th className="p-4 text-right">Balance</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-neutral-800">
+                        <tbody className="divide-y divide-white/[0.04]">
                           {monthlyReports.map((r, idx) => (
                             <tr
                               key={r.id}
-                              className="hover:bg-neutral-800/40 transition-colors"
+                              className="hover:bg-white/[0.02] transition-colors"
                             >
-                              <td className="p-4 text-neutral-500 font-mono text-xs">
+                              <td className="p-4 text-white/40 font-mono text-[12px]">
                                 {idx + 1}
                               </td>
-                              <td className="p-4 font-bold text-white">
+                              <td className="p-4 font-semibold text-white">
                                 {r.name}
                               </td>
-                              <td className="p-4 text-right font-mono text-neutral-300">
+                              <td className="p-4 text-right font-mono text-white/85">
                                 Rs.{" "}
                                 {Number(r.base_salary).toLocaleString("en-PK", {
                                   minimumFractionDigits: 2,
@@ -2848,25 +2865,25 @@ export default function SingleCompanyAdmin({
                               </td>
                               <td className="p-4 text-center">
                                 {r.type === "daily" ? (
-                                  <span className="inline-flex gap-1">
-                                    <span className="text-emerald-400 font-semibold">
+                                  <span className="inline-flex gap-1 text-[12px]">
+                                    <span className="text-[#30D158] font-semibold">
                                       {r.full}F
                                     </span>{" "}
                                     /
-                                    <span className="text-yellow-400 font-semibold">
+                                    <span className="text-[#FFD60A] font-semibold">
                                       {r.half}H
                                     </span>{" "}
                                     /
-                                    <span className="text-blue-400 font-semibold">
+                                    <span className="text-[#0A84FF] font-semibold">
                                       {r.paidHol}Hol
                                     </span>{" "}
                                     /
-                                    <span className="text-red-400 font-semibold">
+                                    <span className="text-[#FF6961] font-semibold">
                                       {r.abs}A
                                     </span>
                                   </span>
                                 ) : (
-                                  <span className="text-blue-400 font-semibold">
+                                  <span className="text-[#0A84FF] font-semibold">
                                     {r.work} Days (Bulk)
                                   </span>
                                 )}
@@ -2875,13 +2892,13 @@ export default function SingleCompanyAdmin({
                                 {r.type === "daily" ? r.paidDays : r.work} /{" "}
                                 {r.totalDays}
                               </td>
-                              <td className="p-4 text-right font-mono font-bold text-emerald-400">
+                              <td className="p-4 text-right font-mono font-bold text-[#30D158]">
                                 Rs.{" "}
                                 {r.pay.toLocaleString("en-PK", {
                                   minimumFractionDigits: 2,
                                 })}
                               </td>
-                              <td className="p-4 text-right font-mono font-bold text-yellow-500">
+                              <td className="p-4 text-right font-mono font-bold text-[#FFD60A]">
                                 Rs.{" "}
                                 {r.bal.toLocaleString("en-PK", {
                                   minimumFractionDigits: 2,
@@ -2890,13 +2907,13 @@ export default function SingleCompanyAdmin({
                             </tr>
                           ))}
                         </tbody>
-                        <tfoot className="bg-neutral-950 border-t-2 border-red-900/50">
+                        <tfoot className="bg-white/[0.02] border-t-2 border-[#7C5CFF]/40">
                           <tr>
                             <td className="p-4"></td>
-                            <td className="p-4 font-extrabold text-white uppercase text-[11px] tracking-wider">
-                              Total Salary ({monthlyReports.length} employees)
+                            <td className="p-4 font-bold text-white uppercase text-[11px] tracking-wider">
+                              Total ({monthlyReports.length} employees)
                             </td>
-                            <td className="p-4 text-right font-mono font-bold text-neutral-300">
+                            <td className="p-4 text-right font-mono font-bold text-white/85">
                               Rs.{" "}
                               {monthlyReports
                                 .reduce(
@@ -2909,7 +2926,7 @@ export default function SingleCompanyAdmin({
                             </td>
                             <td className="p-4"></td>
                             <td className="p-4"></td>
-                            <td className="p-4 text-right font-mono font-extrabold text-emerald-400 text-sm">
+                            <td className="p-4 text-right font-mono font-extrabold text-[#30D158] text-[14px]">
                               Rs.{" "}
                               {monthlyReports
                                 .reduce((sum, r) => sum + Number(r.pay || 0), 0)
@@ -2917,7 +2934,7 @@ export default function SingleCompanyAdmin({
                                   minimumFractionDigits: 2,
                                 })}
                             </td>
-                            <td className="p-4 text-right font-mono font-bold text-yellow-500">
+                            <td className="p-4 text-right font-mono font-bold text-[#FFD60A]">
                               Rs.{" "}
                               {monthlyReports
                                 .reduce((sum, r) => sum + Number(r.bal || 0), 0)
@@ -2937,228 +2954,112 @@ export default function SingleCompanyAdmin({
 
           {/* ANALYTICS TAB */}
           {activeTab === "analytics" && isAdmin && (
-            <div className="space-y-6 w-full">
+            <div className="space-y-5 w-full">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-                <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl hover:border-neutral-700 transition-colors">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                      Workforce
-                    </span>
-                    <div className="p-2 bg-red-500/10 rounded-lg text-red-400">
-                      <Users className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <span className="text-2xl font-extrabold text-white block">
-                    {employees.length}
-                  </span>
-                  <span className="text-[11px] text-neutral-500">
-                    active employees
-                  </span>
-                </div>
-                <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl hover:border-neutral-700 transition-colors">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                      Avg. salary
-                    </span>
-                    <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
-                      <TrendingUp className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <span className="text-2xl font-extrabold text-white block font-mono">
-                    Rs.{" "}
-                    {avgSalary.toLocaleString("en-PK", {
-                      maximumFractionDigits: 0,
-                    })}
-                  </span>
-                  <span className="text-[11px] text-neutral-500">
-                    per employee / month
-                  </span>
-                </div>
-                <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl hover:border-neutral-700 transition-colors">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                      Monthly budget
-                    </span>
-                    <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400">
-                      <Wallet className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <span className="text-2xl font-extrabold text-emerald-400 block font-mono">
-                    Rs. {totalBudget.toLocaleString()}
-                  </span>
-                  <span className="text-[11px] text-neutral-500">
-                    combined base salaries
-                  </span>
-                </div>
-                <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-2xl hover:border-neutral-700 transition-colors">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                      Today's attendance
-                    </span>
-                    <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-400">
-                      <CalendarCheck className="w-4 h-4" />
-                    </div>
-                  </div>
-                  <span className="text-2xl font-extrabold text-white block">
-                    {attendanceRate}%
-                  </span>
-                  <span className="text-[11px] text-neutral-500">
-                    {todayAttendanceLoading
+                <StatCard
+                  label="Workforce"
+                  value={employees.length}
+                  sub="active employees"
+                  icon={Users}
+                  accent="violet"
+                />
+                <StatCard
+                  label="Avg. Salary"
+                  value={`Rs. ${avgSalary.toLocaleString("en-PK", {
+                    maximumFractionDigits: 0,
+                  })}`}
+                  sub="per employee / month"
+                  icon={TrendingUp}
+                  accent="blue"
+                />
+                <StatCard
+                  label="Monthly Budget"
+                  value={`Rs. ${totalBudget.toLocaleString()}`}
+                  sub="combined base salaries"
+                  icon={Wallet}
+                  accent="green"
+                />
+                <StatCard
+                  label="Today's Attendance"
+                  value={`${attendanceRate}%`}
+                  sub={
+                    todayAttendanceLoading
                       ? "loading…"
-                      : `${presentToday} present · ${absentToday} absent`}
-                  </span>
-                </div>
+                      : `${presentToday} present · ${absentToday} absent`
+                  }
+                  icon={CalendarCheck}
+                  accent="yellow"
+                />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full">
-                <div className="lg:col-span-2 bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 w-full">
+                <div className="lg:col-span-2 bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4 text-red-500" />
-                      <span>Today's Attendance Status Chart</span>
+                    <h4 className="text-[15px] font-bold text-white flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-[#A390FF]" />
+                      <span>Today's Attendance Status</span>
                     </h4>
-                    <span className="text-xs text-neutral-500">
-                      {months[currentDate.getMonth()]} {currentDate.getDate()},{" "}
-                      {currentDate.getFullYear()}
+                    <span className="text-[12px] text-white/40">
+                      {months[currentDate.getMonth()]} {currentDate.getDate()}
                     </span>
                   </div>
-                  <div className="h-48 w-full flex items-end justify-around pt-6 pb-2 px-4 bg-neutral-950/60 rounded-xl border border-neutral-800">
-                    <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
-                      <span className="text-xs font-bold text-emerald-400">
-                        {presentFullToday}
-                      </span>
-                      <div
-                        className="w-full bg-emerald-500 rounded-t-lg transition-all duration-500"
-                        style={{
-                          height:
-                            totalToday > 0
-                              ? (presentFullToday / totalToday) * 100
-                              : 0,
-                          minHeight: presentFullToday > 0 ? "12px" : "4px",
-                        }}
-                      />
-                      <span className="text-[10px] font-semibold text-neutral-400">
-                        Full
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
-                      <span className="text-xs font-bold text-yellow-400">
-                        {presentHalfToday}
-                      </span>
-                      <div
-                        className="w-full bg-yellow-500 rounded-t-lg transition-all duration-500"
-                        style={{
-                          height:
-                            totalToday > 0
-                              ? (presentHalfToday / totalToday) * 100
-                              : 0,
-                          minHeight: presentHalfToday > 0 ? "12px" : "4px",
-                        }}
-                      />
-                      <span className="text-[10px] font-semibold text-neutral-400">
-                        Half
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
-                      <span className="text-xs font-bold text-blue-400">
-                        {holidayToday}
-                      </span>
-                      <div
-                        className="w-full bg-blue-500 rounded-t-lg transition-all duration-500"
-                        style={{
-                          height:
-                            totalToday > 0
-                              ? (holidayToday / totalToday) * 100
-                              : 0,
-                          minHeight: holidayToday > 0 ? "12px" : "4px",
-                        }}
-                      />
-                      <span className="text-[10px] font-semibold text-neutral-400">
-                        Holiday
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
-                      <span className="text-xs font-bold text-red-400">
-                        {absentToday}
-                      </span>
-                      <div
-                        className="w-full bg-red-500 rounded-t-lg transition-all duration-500"
-                        style={{
-                          height:
-                            totalToday > 0
-                              ? (absentToday / totalToday) * 100
-                              : 0,
-                          minHeight: absentToday > 0 ? "12px" : "4px",
-                        }}
-                      />
-                      <span className="text-[10px] font-semibold text-neutral-400">
-                        Absent
-                      </span>
-                    </div>
+                  <div className="h-48 w-full flex items-end justify-around pt-6 pb-2 px-4 bg-white/[0.02] rounded-[12px] border border-white/[0.06]">
+                    <BarChartColumn
+                      value={presentFullToday}
+                      total={totalToday}
+                      color="#30D158"
+                      label="Full"
+                    />
+                    <BarChartColumn
+                      value={presentHalfToday}
+                      total={totalToday}
+                      color="#FFD60A"
+                      label="Half"
+                    />
+                    <BarChartColumn
+                      value={holidayToday}
+                      total={totalToday}
+                      color="#0A84FF"
+                      label="Holiday"
+                    />
+                    <BarChartColumn
+                      value={absentToday}
+                      total={totalToday}
+                      color="#FF453A"
+                      label="Absent"
+                    />
                   </div>
                 </div>
-                <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-4">
-                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                    <PieChart className="w-4 h-4 text-emerald-500" />
+
+                <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4">
+                  <h4 className="text-[15px] font-bold text-white flex items-center gap-2">
+                    <PieChart className="w-4 h-4 text-[#30D158]" />
                     <span>Ratio Breakdown</span>
                   </h4>
                   <div className="space-y-3 pt-2">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-semibold">
-                        <span className="text-emerald-400">Present Rate</span>
-                        <span className="text-white">{attendanceRate}%</span>
-                      </div>
-                      <div className="w-full h-2 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
-                        <div
-                          className="h-full bg-emerald-500 transition-all duration-500"
-                          style={{ width: `${attendanceRate}%` }}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-semibold">
-                        <span className="text-red-400">Absent Rate</span>
-                        <span className="text-white">
-                          {totalToday > 0
-                            ? Math.round((absentToday / totalToday) * 100)
-                            : 0}
-                          %
-                        </span>
-                      </div>
-                      <div className="w-full h-2 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
-                        <div
-                          className="h-full bg-red-500 transition-all duration-500"
-                          style={{
-                            width:
-                              totalToday > 0
-                                ? (absentToday / totalToday) * 100
-                                : 0,
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-semibold">
-                        <span className="text-neutral-400">Unmarked</span>
-                        <span className="text-white">
-                          {totalToday > 0
-                            ? Math.round((unmarkedToday / totalToday) * 100)
-                            : 0}
-                          %
-                        </span>
-                      </div>
-                      <div className="w-full h-2 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
-                        <div
-                          className="h-full bg-neutral-700 transition-all duration-500"
-                          style={{
-                            width:
-                              totalToday > 0
-                                ? (unmarkedToday / totalToday) * 100
-                                : 0,
-                          }}
-                        />
-                      </div>
-                    </div>
+                    <RatioBar
+                      label="Present Rate"
+                      pct={attendanceRate}
+                      color="#30D158"
+                    />
+                    <RatioBar
+                      label="Absent Rate"
+                      pct={
+                        totalToday > 0
+                          ? Math.round((absentToday / totalToday) * 100)
+                          : 0
+                      }
+                      color="#FF453A"
+                    />
+                    <RatioBar
+                      label="Unmarked"
+                      pct={
+                        totalToday > 0
+                          ? Math.round((unmarkedToday / totalToday) * 100)
+                          : 0
+                      }
+                      color="rgba(255,255,255,0.3)"
+                    />
                   </div>
                 </div>
               </div>
@@ -3167,15 +3068,15 @@ export default function SingleCompanyAdmin({
 
           {/* CALCULATOR TAB */}
           {activeTab === "calculator" && isAdmin && (
-            <div className="w-full bg-neutral-900 border border-neutral-800 p-6 rounded-2xl space-y-5">
-              <div className="border-b border-neutral-800 pb-3">
-                <h3 className="font-bold text-sm text-red-500 uppercase tracking-wider flex items-center gap-2">
+            <div className="w-full bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-5">
+              <div className="border-b border-white/[0.06] pb-3">
+                <h3 className="font-bold text-[15px] text-[#A390FF] tracking-wide flex items-center gap-2">
                   <Calculator className="w-4 h-4" />
                   <span>Salary & Overtime Extra Calculator</span>
                 </h3>
-                <p className="text-xs text-neutral-500 mt-0.5">
+                <p className="text-[12px] text-white/40 mt-0.5">
                   Calculate worked days credit, daily rates, overtime, and
-                  deductions logically.
+                  deductions.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
@@ -3190,7 +3091,7 @@ export default function SingleCompanyAdmin({
                   onChange={(y) => setCalcYear(y)}
                 />
                 <div>
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
+                  <label className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 block">
                     Monthly Base Salary (Rs.)
                   </label>
                   <input
@@ -3199,159 +3100,103 @@ export default function SingleCompanyAdmin({
                     placeholder="e.g. 50000"
                     value={calcSalary}
                     onChange={(e) => setCalcSalary(e.target.value)}
-                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
+                    className="w-full h-11 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-3.5 text-[15px] text-white placeholder-white/30 transition-all outline-none font-mono"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
-                <div>
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
-                    Full Days Worked
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Full Days"
-                    value={calcFull}
-                    onChange={(e) => setCalcFull(Number(e.target.value))}
-                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
-                    Half Days Worked
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Half Days"
-                    value={calcHalf}
-                    onChange={(e) => setCalcHalf(Number(e.target.value))}
-                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
-                    Holidays
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Holidays"
-                    value={calcHoliday}
-                    onChange={(e) => setCalcHoliday(Number(e.target.value))}
-                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
-                  />
-                </div>
+                <CalcInput
+                  label="Full Days Worked"
+                  placeholder="Full Days"
+                  value={calcFull}
+                  onChange={(v) => setCalcFull(Number(v))}
+                />
+                <CalcInput
+                  label="Half Days Worked"
+                  placeholder="Half Days"
+                  value={calcHalf}
+                  onChange={(v) => setCalcHalf(Number(v))}
+                />
+                <CalcInput
+                  label="Holidays"
+                  placeholder="Holidays"
+                  value={calcHoliday}
+                  onChange={(v) => setCalcHoliday(Number(v))}
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-                <div>
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
-                    Overtime Hours (1.25x Rate)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 10 hours"
-                    value={calcOvertimeHours}
-                    onChange={(e) => setCalcOvertimeHours(e.target.value)}
-                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 block">
-                    Advance / Deductions (Rs.)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 2000"
-                    value={calcAdvanceDeductions}
-                    onChange={(e) => setCalcAdvanceDeductions(e.target.value)}
-                    className="w-full h-11 bg-neutral-950/90 border border-neutral-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl px-3.5 text-xs text-white placeholder-neutral-500 transition-all outline-none font-mono"
-                  />
-                </div>
+                <CalcInput
+                  label="Overtime Hours (1.25x Rate)"
+                  placeholder="e.g. 10"
+                  value={calcOvertimeHours}
+                  onChange={(v) => setCalcOvertimeHours(v)}
+                />
+                <CalcInput
+                  label="Advance / Deductions (Rs.)"
+                  placeholder="e.g. 2000"
+                  value={calcAdvanceDeductions}
+                  onChange={(v) => setCalcAdvanceDeductions(v)}
+                />
               </div>
               <button
                 type="button"
                 onClick={handleCalculateExtra}
-                className="w-full h-12 bg-red-600 hover:bg-red-700 rounded-xl font-bold text-xs text-white uppercase tracking-wider transition-all active:scale-[0.99] shadow-lg shadow-red-950/60 cursor-pointer flex items-center justify-center gap-2"
+                className="w-full h-12 bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] rounded-[14px] font-semibold text-[14px] text-white tracking-wide transition-all active:scale-[0.99] shadow-lg shadow-[#7C5CFF]/25 cursor-pointer flex items-center justify-center gap-2"
               >
                 <Calculator className="w-4 h-4" />
                 <span>Calculate Payroll Breakdown</span>
               </button>
               {calcResult && (
-                <div className="bg-neutral-950 p-5 rounded-xl border border-neutral-800 space-y-3 text-xs text-neutral-300 animate-in fade-in">
-                  <h4 className="font-bold text-sm text-white border-b border-neutral-800 pb-2">
+                <div className="bg-white/[0.02] p-5 rounded-[14px] border border-white/[0.06] space-y-3 text-[13px] text-white/85">
+                  <h4 className="font-bold text-[14px] text-white border-b border-white/[0.06] pb-2">
                     Calculation Results ({months[calcMonth]} {calcYear})
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <span className="text-neutral-500 block">
-                        Days in Month:
-                      </span>
-                      <span className="font-semibold text-white">
-                        {calcResult.totalDays} Days
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block">
-                        Daily Rate:
-                      </span>
-                      <span className="font-mono text-emerald-400">
-                        Rs. {calcResult.dailyRate.toFixed(2)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block">
-                        Worked Days Credit:
-                      </span>
-                      <span className="font-semibold text-white">
-                        {calcResult.workedDaysCredit} Days
-                      </span>
-                    </div>
+                    <CalcResultItem
+                      label="Days in Month"
+                      value={`${calcResult.totalDays} Days`}
+                    />
+                    <CalcResultItem
+                      label="Daily Rate"
+                      value={`Rs. ${calcResult.dailyRate.toFixed(2)}`}
+                      color="#30D158"
+                    />
+                    <CalcResultItem
+                      label="Worked Days Credit"
+                      value={`${calcResult.workedDaysCredit} Days`}
+                    />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-neutral-800/80 pt-3">
-                    <div>
-                      <span className="text-neutral-500 block">
-                        Paid Holidays (Capped at 4):
-                      </span>
-                      <span className="text-blue-400 font-semibold">
-                        {calcResult.paidHol} Paid ({calcResult.unpaidExtraHol}{" "}
-                        Unpaid)
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block">
-                        Overtime Bonus:
-                      </span>
-                      <span className="font-mono text-emerald-400">
-                        + Rs. {calcResult.overtimePay.toFixed(2)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block">
-                        Advance Deductions:
-                      </span>
-                      <span className="font-mono text-red-400">
-                        - Rs. {calcResult.deductions.toFixed(2)}
-                      </span>
-                    </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-white/[0.06] pt-3">
+                    <CalcResultItem
+                      label="Paid Holidays (Cap 4)"
+                      value={`${calcResult.paidHol} Paid (${calcResult.unpaidExtraHol} Unpaid)`}
+                      color="#0A84FF"
+                    />
+                    <CalcResultItem
+                      label="Overtime Bonus"
+                      value={`+ Rs. ${calcResult.overtimePay.toFixed(2)}`}
+                      color="#30D158"
+                    />
+                    <CalcResultItem
+                      label="Advance Deductions"
+                      value={`- Rs. ${calcResult.deductions.toFixed(2)}`}
+                      color="#FF6961"
+                    />
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-neutral-900 p-4 rounded-xl border border-neutral-800 gap-2 pt-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/[0.02] p-4 rounded-[12px] border border-white/[0.06] gap-2 mt-2">
                     <div>
-                      <span className="text-neutral-400 block text-[10px] uppercase font-bold">
+                      <span className="text-white/40 block text-[10px] uppercase font-bold">
                         Net Calculated Payable
                       </span>
-                      <span className="text-xl font-bold font-mono text-emerald-400">
+                      <span className="text-[20px] font-bold font-mono text-[#30D158]">
                         Rs. {calcResult.netPayable.toFixed(2)}
                       </span>
                     </div>
-                    <div className="text-right">
-                      <span className="text-neutral-400 block text-[10px] uppercase font-bold">
+                    <div className="sm:text-right">
+                      <span className="text-white/40 block text-[10px] uppercase font-bold">
                         Remaining Unpaid Balance
                       </span>
-                      <span className="text-lg font-bold font-mono text-yellow-500">
+                      <span className="text-[18px] font-bold font-mono text-[#FFD60A]">
                         Rs. {calcResult.balanceRemaining.toFixed(2)}
                       </span>
                     </div>
@@ -3362,6 +3207,136 @@ export default function SingleCompanyAdmin({
           )}
         </main>
       </div>
+    </div>
+  );
+}
+
+// ---------- Helper components ----------
+
+function SectionLabel({ icon: Icon, label }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="p-1.5 rounded-lg bg-[#7C5CFF]/12 border border-[#7C5CFF]/20">
+        <Icon className="w-3.5 h-3.5 text-[#A390FF]" />
+      </div>
+      <span className="text-[11px] font-semibold text-white/50 uppercase tracking-widest">
+        {label}
+      </span>
+      <div className="flex-1 h-px bg-gradient-to-r from-white/[0.06] to-transparent" />
+    </div>
+  );
+}
+
+function ProfileField({ label, value, wrap, mono, highlight }) {
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.06] rounded-[12px] p-3.5">
+      <span className="text-[11px] font-medium text-white/50 block mb-0.5">
+        {label}
+      </span>
+      <span
+        className={`text-[14px] font-medium block ${
+          highlight ? "text-[#30D158]" : "text-white"
+        } ${mono ? "font-mono" : ""} ${
+          wrap ? "break-words whitespace-normal leading-relaxed" : "truncate"
+        }`}
+      >
+        {value || "Not provided"}
+      </span>
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub, icon: Icon, accent = "violet" }) {
+  const accents = {
+    violet: "text-[#A390FF] bg-[#7C5CFF]/10 border-[#7C5CFF]/20",
+    blue: "text-[#0A84FF] bg-[#0A84FF]/10 border-[#0A84FF]/20",
+    green: "text-[#30D158] bg-[#30D158]/10 border-[#30D158]/20",
+    yellow: "text-[#FFD60A] bg-[#FFD60A]/10 border-[#FFD60A]/20",
+    red: "text-[#FF6961] bg-[#FF453A]/10 border-[#FF453A]/20",
+  };
+  return (
+    <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 rounded-[20px] hover:border-white/[0.10] transition-colors">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+          {label}
+        </span>
+        <div className={`p-2 rounded-[10px] border ${accents[accent]}`}>
+          <Icon className="w-4 h-4" />
+        </div>
+      </div>
+      <span className="text-[22px] font-bold text-white block tabular-nums">
+        {value}
+      </span>
+      <span className="text-[12px] text-white/40 mt-0.5 block">{sub}</span>
+    </div>
+  );
+}
+
+function BarChartColumn({ value, total, color, label }) {
+  const pct = total > 0 ? (value / total) * 100 : 0;
+  return (
+    <div className="flex flex-col items-center gap-2 h-full justify-end w-12">
+      <span className="text-[12px] font-bold" style={{ color }}>
+        {value}
+      </span>
+      <div
+        className="w-full rounded-t-lg transition-all duration-500"
+        style={{
+          height: `${pct}%`,
+          minHeight: value > 0 ? "12px" : "4px",
+          backgroundColor: color,
+        }}
+      />
+      <span className="text-[10px] font-semibold text-white/60">{label}</span>
+    </div>
+  );
+}
+
+function RatioBar({ label, pct, color }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-[12px] font-semibold">
+        <span style={{ color }}>{label}</span>
+        <span className="text-white">{pct}%</span>
+      </div>
+      <div className="w-full h-2 bg-white/[0.02] rounded-full overflow-hidden border border-white/[0.06]">
+        <div
+          className="h-full transition-all duration-500"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CalcInput({ label, placeholder, value, onChange }) {
+  return (
+    <div>
+      <label className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 block">
+        {label}
+      </label>
+      <input
+        type="number"
+        min="0"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-11 bg-white/[0.03] border border-white/[0.08] focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/20 rounded-[12px] px-3.5 text-[15px] text-white placeholder-white/30 transition-all outline-none font-mono"
+      />
+    </div>
+  );
+}
+
+function CalcResultItem({ label, value, color }) {
+  return (
+    <div>
+      <span className="text-white/40 block text-[11px]">{label}</span>
+      <span
+        className="font-semibold text-[14px]"
+        style={{ color: color || "#fff" }}
+      >
+        {value}
+      </span>
     </div>
   );
 }

@@ -9,13 +9,13 @@ import {
   AlertCircle,
   Search,
   FileText,
+  Eye,
   Star,
   ThumbsUp,
   Wrench,
   X,
   Plus,
   Trash2,
-  Eye,
   Loader2,
   Settings,
   ChevronRight,
@@ -99,6 +99,11 @@ function isLow(r) {
 function hasComplaint(r) {
   return !!(r.comment && r.comment.trim()) || isLow(r);
 }
+
+const btnPrimary =
+  "bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] text-white shadow-[0_10px_28px_-10px_rgba(124,92,255,0.6)]";
+const btnBlue =
+  "bg-gradient-to-b from-[#3B9CFF] to-[#0A84FF] hover:from-[#4BAAFF] hover:to-[#0A84FF] text-white shadow-[0_10px_28px_-10px_rgba(10,132,255,0.6)]";
 
 export default function FeedbackAdminDashboard({ companyId, companyName }) {
   const [subTab, setSubTab] = useState("overview");
@@ -442,7 +447,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
           <style>
             * { box-sizing: border-box; }
             body { font-family: Arial, sans-serif; padding: 24px; color: #1e293b; margin: 0; }
-            .header { border-bottom: 2px solid #dc2626; padding-bottom: 12px; margin-bottom: 20px; }
+            .header { border-bottom: 2px solid #7c5cff; padding-bottom: 12px; margin-bottom: 20px; }
             .company { font-size: 22px; font-weight: bold; color: #0f172a; }
             .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
             .date-label { font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 8px; }
@@ -671,15 +676,16 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
     });
   };
 
+  // ---------- render ----------
+
   return (
     <div className="w-full space-y-5 sm:space-y-6 pb-6">
-      {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl sm:text-2xl font-black text-white tracking-tight leading-tight">
+          <h1 className="text-[26px] sm:text-[24px] font-bold text-white tracking-tight leading-tight">
             Customer Feedback
           </h1>
-          <p className="text-sm sm:text-xs text-neutral-400 mt-1">
+          <p className="text-[14px] sm:text-[13px] text-white/50 mt-1">
             {companyName} · {metrics.total} response
             {metrics.total !== 1 ? "s" : ""}
           </p>
@@ -687,33 +693,33 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
         <div className="flex gap-2 shrink-0">
           <button
             onClick={previewPDF}
-            className="h-12 sm:h-10 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white font-bold px-3 sm:px-4 rounded-xl text-sm sm:text-xs tracking-wide uppercase flex items-center gap-2 transition-all active:scale-[0.98]"
+            className="h-12 sm:h-10 px-3 sm:px-4 rounded-[12px] text-[15px] sm:text-[12px] font-semibold flex items-center gap-2 transition-all active:scale-[0.98] bg-white/[0.04] border border-white/[0.08] text-white hover:bg-white/[0.08]"
             title="Preview report"
           >
-            <Eye className="w-5 h-5 sm:w-4 sm:h-4 text-blue-400" />
+            <Eye className="w-5 h-5 sm:w-4 sm:h-4 text-[#3B9CFF]" />
             <span className="hidden sm:inline">Preview</span>
           </button>
           <button
             onClick={exportPDF}
-            className="h-12 sm:h-10 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white font-bold px-3 sm:px-4 rounded-xl text-sm sm:text-xs tracking-wide uppercase flex items-center gap-2 transition-all active:scale-[0.98]"
+            className={`h-12 sm:h-10 px-3 sm:px-4 rounded-[12px] text-[15px] sm:text-[12px] font-semibold flex items-center gap-2 transition-all active:scale-[0.98] border border-[#7C5CFF]/40 ${btnPrimary}`}
             title="Download PDF"
           >
-            <FileText className="w-5 h-5 sm:w-4 sm:h-4 text-red-500" />
+            <FileText className="w-5 h-5 sm:w-4 sm:h-4" />
             <span className="hidden sm:inline">Download</span>
           </button>
         </div>
       </div>
 
-      {/* Range selector — wraps on mobile */}
+      {/* Ranges */}
       <div className="flex flex-wrap gap-2">
         {RANGES.map((r) => (
           <button
             key={r.id}
             onClick={() => setRange(r.id)}
-            className={`h-11 sm:h-9 px-4 rounded-xl text-sm sm:text-xs font-bold uppercase tracking-wide border transition-all ${
+            className={`h-11 sm:h-9 px-4 rounded-[12px] text-[15px] sm:text-[12px] font-semibold uppercase tracking-wide border transition-all ${
               range === r.id
-                ? "bg-red-600 border-red-500 text-white shadow-md shadow-red-950/50"
-                : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
+                ? "bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] border-[#7C5CFF]/40 text-white shadow-[0_8px_20px_-8px_rgba(124,92,255,0.6)]"
+                : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white hover:bg-white/[0.05]"
             }`}
           >
             {r.label}
@@ -739,12 +745,12 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
       {/* Filters toggle (mobile) */}
       <button
         onClick={() => setFiltersOpen((v) => !v)}
-        className="md:hidden w-full h-12 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-sm font-bold uppercase tracking-wide text-neutral-200 flex items-center justify-center gap-2 transition-all"
+        className="md:hidden w-full h-12 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] rounded-[14px] text-[15px] font-semibold text-white flex items-center justify-center gap-2 transition-all"
       >
         <SlidersHorizontal className="w-5 h-5" />
         Filters
         {activeFilterCount > 0 && (
-          <span className="bg-red-600 text-white text-xs font-black rounded-full px-2 py-0.5 min-w-[22px]">
+          <span className="bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] text-white text-[12px] font-black rounded-full px-2 py-0.5 min-w-[22px]">
             {activeFilterCount}
           </span>
         )}
@@ -753,7 +759,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
       <div
         className={`${
           filtersOpen ? "block" : "hidden"
-        } md:block bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3`}
+        } md:block bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-4 space-y-3`}
       >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <CustomSelect
@@ -790,13 +796,13 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
         </div>
 
         <div className="relative">
-          <Search className="w-5 h-5 sm:w-4 sm:h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-5 h-5 sm:w-4 sm:h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search customer, mobile, bike…"
-            className="w-full h-12 sm:h-11 bg-neutral-950/80 border border-neutral-800 rounded-xl pl-11 pr-4 text-base sm:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+            className="w-full h-12 sm:h-11 bg-white/[0.03] border border-white/[0.08] rounded-[12px] pl-11 pr-4 text-[16px] sm:text-[15px] text-white placeholder-white/30 focus:outline-none focus:border-[#7C5CFF]/60 focus:ring-2 focus:ring-[#7C5CFF]/15"
           />
         </div>
 
@@ -808,14 +814,14 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
               setFilterWorker("");
               setSearch("");
             }}
-            className="text-sm sm:text-xs font-bold text-red-400 hover:text-red-300 uppercase tracking-wide"
+            className="text-[15px] sm:text-[12px] font-semibold text-[#A390FF] hover:text-white uppercase tracking-wide"
           >
             Clear all filters
           </button>
         )}
       </div>
 
-      {/* Sub-tabs — wraps */}
+      {/* Sub-tabs */}
       <div className="flex flex-wrap gap-2">
         {SUB_TABS.map((t) => {
           const Icon = t.icon;
@@ -824,16 +830,16 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
             <button
               key={t.id}
               onClick={() => setSubTab(t.id)}
-              className={`flex items-center gap-2 h-11 sm:h-10 px-3.5 rounded-xl text-sm sm:text-xs font-bold uppercase tracking-wide border transition-all ${
+              className={`flex items-center gap-2 h-11 sm:h-10 px-3.5 rounded-[12px] text-[15px] sm:text-[12px] font-semibold uppercase tracking-wide border transition-all ${
                 active
-                  ? "bg-neutral-800 border-neutral-700 text-white"
-                  : "bg-neutral-900 border-neutral-800 text-neutral-500 hover:text-white hover:border-neutral-700"
+                  ? "bg-white/[0.08] border-white/[0.14] text-white"
+                  : "bg-[#1C1C1E] border-white/[0.06] text-white/55 hover:text-white hover:border-white/[0.12]"
               }`}
             >
               <Icon className="w-4 h-4" />
               {t.label}
               {t.id === "attention" && attentionList.length > 0 && (
-                <span className="ml-0.5 bg-red-600 text-white text-xs font-black rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+                <span className="ml-0.5 bg-gradient-to-b from-[#FF6B60] to-[#E0382E] text-white text-[11px] font-black rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
                   {attentionList.length}
                 </span>
               )}
@@ -844,7 +850,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
 
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-7 h-7 text-red-500 animate-spin" />
+          <Loader2 className="w-7 h-7 text-[#A390FF] animate-spin" />
         </div>
       )}
 
@@ -948,37 +954,37 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
   );
 }
 
-// ============ VIEWS ============
+// ---------- Views ----------
 
-function KpiCard({ label, value, sub, icon: Icon, accent = "red" }) {
+function KpiCard({ label, value, sub, icon: Icon, accent = "violet" }) {
   const accents = {
-    red: "text-red-400 bg-red-500/10 border-red-500/20",
-    emerald: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-    blue: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-    yellow: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20",
-    purple: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+    violet: "text-[#A390FF] bg-[#7C5CFF]/10 border-[#7C5CFF]/20",
+    blue: "text-[#3B9CFF] bg-[#0A84FF]/10 border-[#0A84FF]/20",
+    green: "text-[#30D158] bg-[#30D158]/10 border-[#30D158]/20",
+    yellow: "text-[#FFD60A] bg-[#FFD60A]/10 border-[#FFD60A]/20",
+    red: "text-[#FF6961] bg-[#FF453A]/10 border-[#FF453A]/20",
   };
   return (
-    <div className="bg-neutral-900 border border-neutral-800 p-4 sm:p-5 rounded-2xl">
+    <div className="bg-[#1C1C1E] border border-white/[0.06] p-4 sm:p-5 rounded-[20px]">
       <div className="flex items-center justify-between mb-3 gap-2">
-        <span className="text-xs sm:text-[10px] font-bold text-neutral-400 uppercase tracking-wider truncate">
+        <span className="text-[12px] sm:text-[10px] font-semibold text-white/50 uppercase tracking-wider truncate">
           {label}
         </span>
         {Icon && (
           <div
-            className={`p-2 rounded-lg border shrink-0 ${
-              accents[accent] || accents.red
+            className={`p-2 rounded-[10px] border shrink-0 ${
+              accents[accent] || accents.violet
             }`}
           >
             <Icon className="w-5 h-5 sm:w-4 sm:h-4" />
           </div>
         )}
       </div>
-      <div className="text-2xl sm:text-2xl font-black text-white tabular-nums leading-tight">
+      <div className="text-[26px] sm:text-[24px] font-bold text-white tabular-nums leading-tight">
         {value}
       </div>
       {sub && (
-        <div className="text-sm sm:text-xs text-neutral-500 mt-1.5 leading-snug">
+        <div className="text-[14px] sm:text-[12px] text-white/45 mt-1.5 leading-snug">
           {sub}
         </div>
       )}
@@ -991,16 +997,16 @@ function RatingBar({ label, value }) {
   return (
     <div className="space-y-2">
       <div className="flex justify-between items-center">
-        <span className="text-base sm:text-sm font-semibold text-neutral-200">
+        <span className="text-[16px] sm:text-[14px] font-semibold text-white/85">
           {label}
         </span>
-        <span className="font-mono font-bold text-yellow-400 tabular-nums text-base sm:text-sm">
+        <span className="font-mono font-bold text-[#FFD60A] tabular-nums text-[16px] sm:text-[14px]">
           {value > 0 ? value.toFixed(2) : "—"}
         </span>
       </div>
-      <div className="w-full h-2.5 bg-neutral-950 rounded-full overflow-hidden border border-neutral-800">
+      <div className="w-full h-2.5 bg-white/[0.02] rounded-full overflow-hidden border border-white/[0.06]">
         <div
-          className="h-full bg-gradient-to-r from-yellow-500 to-yellow-400 transition-all duration-500"
+          className="h-full bg-gradient-to-r from-[#FFE03A] to-[#FFD60A] transition-all duration-500"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -1037,7 +1043,7 @@ function OverviewView({
           value={`${metrics.recPct}%`}
           sub={`${metrics.recMust} · ${metrics.recMaybe} · ${metrics.recNo}`}
           icon={ThumbsUp}
-          accent="emerald"
+          accent="green"
         />
         <KpiCard
           label="Attention"
@@ -1049,9 +1055,9 @@ function OverviewView({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div className="lg:col-span-2 bg-neutral-900 border border-neutral-800 p-5 sm:p-6 rounded-2xl space-y-4">
-          <h4 className="text-base sm:text-sm font-bold text-white flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 sm:w-4 sm:h-4 text-red-500" />
+        <div className="lg:col-span-2 bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4">
+          <h4 className="text-[16px] sm:text-[14px] font-bold text-white flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 sm:w-4 sm:h-4 text-[#A390FF]" />
             Rating Breakdown
           </h4>
           <div className="space-y-4">
@@ -1076,13 +1082,13 @@ function OverviewView({
           </div>
         </div>
 
-        <div className="bg-neutral-900 border border-neutral-800 p-5 sm:p-6 rounded-2xl space-y-4">
-          <h4 className="text-base sm:text-sm font-bold text-white flex items-center gap-2">
-            <Users className="w-5 h-5 sm:w-4 sm:h-4 text-red-500" />
+        <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4">
+          <h4 className="text-[16px] sm:text-[14px] font-bold text-white flex items-center gap-2">
+            <Users className="w-5 h-5 sm:w-4 sm:h-4 text-[#A390FF]" />
             Submissions by Staff
           </h4>
           {Object.keys(metrics.byStaff).length === 0 ? (
-            <p className="text-sm text-neutral-500">No data in range.</p>
+            <p className="text-[14px] text-white/50">No data in range.</p>
           ) : (
             <div className="space-y-2">
               {Object.entries(metrics.byStaff)
@@ -1090,12 +1096,12 @@ function OverviewView({
                 .map(([uid, info]) => (
                   <div
                     key={uid}
-                    className="flex items-center justify-between bg-neutral-950/60 border border-neutral-800 rounded-xl px-4 py-3"
+                    className="flex items-center justify-between bg-white/[0.02] border border-white/[0.06] rounded-[12px] px-4 py-3"
                   >
-                    <span className="text-sm font-semibold text-white truncate">
+                    <span className="text-[15px] sm:text-[14px] font-semibold text-white truncate">
                       {info.name}
                     </span>
-                    <span className="text-sm font-mono font-bold text-red-400 tabular-nums">
+                    <span className="text-[15px] sm:text-[14px] font-mono font-bold text-[#A390FF] tabular-nums">
                       {info.count}
                     </span>
                   </div>
@@ -1105,13 +1111,13 @@ function OverviewView({
         </div>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 p-5 sm:p-6 rounded-2xl space-y-4">
-        <h4 className="text-base sm:text-sm font-bold text-white flex items-center gap-2">
-          <Sparkles className="w-5 h-5 sm:w-4 sm:h-4 text-red-500" />
+      <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4">
+        <h4 className="text-[16px] sm:text-[14px] font-bold text-white flex items-center gap-2">
+          <Sparkles className="w-5 h-5 sm:w-4 sm:h-4 text-[#A390FF]" />
           Recent Submissions
         </h4>
         {recent.length === 0 ? (
-          <p className="text-sm text-neutral-500">No recent feedback.</p>
+          <p className="text-[14px] text-white/50">No recent feedback.</p>
         ) : (
           <div className="space-y-2.5">
             {recent.map((r) => (
@@ -1132,14 +1138,14 @@ function OverviewView({
 
 function StatusPill({ rec }) {
   const map = {
-    must: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    maybe: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
-    no: "bg-red-500/10 text-red-400 border-red-500/20",
+    must: "bg-[#30D158]/10 text-[#30D158] border-[#30D158]/20",
+    maybe: "bg-[#FFD60A]/10 text-[#FFD60A] border-[#FFD60A]/20",
+    no: "bg-[#FF453A]/10 text-[#FF6961] border-[#FF453A]/20",
   };
   const labels = { must: "Must", maybe: "Maybe", no: "No" };
   return (
     <span
-      className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase border ${map[rec]}`}
+      className={`px-2.5 py-1 rounded-full text-[12px] font-bold uppercase border ${map[rec]}`}
     >
       {labels[rec] || rec}
     </span>
@@ -1147,11 +1153,11 @@ function StatusPill({ rec }) {
 }
 
 function RatingPill({ v }) {
-  if (!v) return <span className="text-neutral-500 text-base">—</span>;
+  if (!v) return <span className="text-white/40 text-[16px]">—</span>;
   const color =
-    v >= 4 ? "text-emerald-400" : v >= 3 ? "text-yellow-400" : "text-red-400";
+    v >= 4 ? "text-[#30D158]" : v >= 3 ? "text-[#FFD60A]" : "text-[#FF6961]";
   return (
-    <span className={`font-mono font-bold text-base sm:text-sm ${color}`}>
+    <span className={`font-mono font-bold text-[16px] sm:text-[14px] ${color}`}>
       {v}★
     </span>
   );
@@ -1163,34 +1169,34 @@ function ResponseRow({ r, areaMap, bikeModelMap, onOpen }) {
   return (
     <button
       onClick={onOpen}
-      className="w-full text-left bg-neutral-950/60 hover:bg-neutral-800/50 border border-neutral-800 rounded-xl p-4 transition-colors active:scale-[0.99]"
+      className="w-full text-left bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] rounded-[14px] p-4 transition-colors active:scale-[0.99]"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap mb-1">
-            <span className="font-bold text-base sm:text-sm text-white truncate">
+            <span className="font-semibold text-[16px] sm:text-[14px] text-white truncate">
               {r.customer?.name || "Unknown"}
             </span>
             {isLow(r) && (
-              <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-red-500/10 border border-red-500/30 text-red-400">
+              <span className="text-[11px] sm:text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF6961]">
                 Low
               </span>
             )}
             {r.comment && r.comment.trim() && (
-              <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-400">
+              <span className="text-[11px] sm:text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FFD60A]/10 border border-[#FFD60A]/25 text-[#FFD60A]">
                 Comment
               </span>
             )}
           </div>
-          <div className="text-sm sm:text-xs text-neutral-400 truncate">
+          <div className="text-[14px] sm:text-[13px] text-white/50 truncate">
             {r.customer?.mobile || "—"} · {areaName}
           </div>
-          <div className="text-sm sm:text-xs text-neutral-500 truncate">
+          <div className="text-[14px] sm:text-[13px] text-white/45 truncate">
             {r.bike_reg_no} · {bikeModelMap[r.bike_model_id] || "—"}
           </div>
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <span className="text-xs sm:text-[10px] font-mono text-neutral-500 whitespace-nowrap">
+          <span className="text-[12px] sm:text-[11px] font-mono text-white/45 whitespace-nowrap">
             {fmtDate(r.created_at)}
           </span>
           <div className="flex items-center gap-1.5">
@@ -1206,8 +1212,8 @@ function ResponseRow({ r, areaMap, bikeModelMap, onOpen }) {
 function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
   if (responses.length === 0) {
     return (
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 text-center">
-        <p className="text-base text-neutral-400">No responses in range.</p>
+      <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-8 text-center">
+        <p className="text-[15px] text-white/60">No responses in range.</p>
       </div>
     );
   }
@@ -1226,10 +1232,10 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
         ))}
       </div>
 
-      <div className="hidden md:block bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+      <div className="hidden md:block bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-neutral-300">
-            <thead className="bg-neutral-950 uppercase text-[10px] text-neutral-500 tracking-wider border-b border-neutral-800">
+          <table className="w-full text-left text-[13px] text-white/85">
+            <thead className="bg-white/[0.02] uppercase text-[10px] text-white/40 tracking-wider border-b border-white/[0.06]">
               <tr>
                 <th className="p-3 w-10">#</th>
                 <th className="p-3">Date</th>
@@ -1244,20 +1250,20 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
                 <th className="p-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-800">
+            <tbody className="divide-y divide-white/[0.04]">
               {responses.map((r, i) => (
                 <tr
                   key={r.id}
-                  className="hover:bg-neutral-800/40 transition-colors"
+                  className="hover:bg-white/[0.02] transition-colors"
                 >
-                  <td className="p-3 text-neutral-500 font-mono">{i + 1}</td>
+                  <td className="p-3 text-white/40 font-mono">{i + 1}</td>
                   <td className="p-3 font-mono text-white whitespace-nowrap">
                     {fmtDate(r.created_at)}
                   </td>
                   <td className="p-3 font-semibold text-white">
                     {r.customer?.name || "—"}
                   </td>
-                  <td className="p-3 font-mono text-neutral-400">
+                  <td className="p-3 font-mono text-white/60">
                     {r.customer?.mobile || "—"}
                   </td>
                   <td className="p-3">
@@ -1265,9 +1271,9 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
                       r.customer?.area_other_text ||
                       "—"}
                   </td>
-                  <td className="p-3 font-mono text-neutral-300 whitespace-nowrap">
+                  <td className="p-3 font-mono text-white/85 whitespace-nowrap">
                     {r.bike_reg_no}
-                    <span className="text-neutral-500 block text-[10px]">
+                    <span className="text-white/40 block text-[10px]">
                       {bikeModelMap[r.bike_model_id] || "—"}
                     </span>
                   </td>
@@ -1276,17 +1282,17 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
                       {(r.worker_list || []).map((w) => (
                         <span
                           key={w.id}
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-600/10 border border-red-600/20 text-red-400"
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#7C5CFF]/10 border border-[#7C5CFF]/20 text-[#A390FF]"
                         >
                           {w.name}
                         </span>
                       ))}
                       {(!r.worker_list || r.worker_list.length === 0) && (
-                        <span className="text-neutral-600">—</span>
+                        <span className="text-white/30">—</span>
                       )}
                     </div>
                   </td>
-                  <td className="p-3 text-neutral-400">{r.taken_by_name}</td>
+                  <td className="p-3 text-white/60">{r.taken_by_name}</td>
                   <td className="p-3 text-center">
                     <RatingPill v={r.rating_overall} />
                   </td>
@@ -1296,7 +1302,7 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
                   <td className="p-3 text-right">
                     <button
                       onClick={() => onOpenDetail(r)}
-                      className="p-1.5 rounded-lg bg-neutral-950 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors"
+                      className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-white/70 hover:text-white transition-colors"
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
@@ -1314,8 +1320,8 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
 function WorkersView({ workerStats, onOpenWorker }) {
   if (workerStats.length === 0) {
     return (
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 text-center">
-        <p className="text-base text-neutral-400">No worker data in range.</p>
+      <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-8 text-center">
+        <p className="text-[15px] text-white/60">No worker data in range.</p>
       </div>
     );
   }
@@ -1325,60 +1331,60 @@ function WorkersView({ workerStats, onOpenWorker }) {
         <button
           key={w.id}
           onClick={() => onOpenWorker(w)}
-          className="text-left bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-2xl p-5 transition-colors active:scale-[0.99]"
+          className="text-left bg-[#1C1C1E] border border-white/[0.06] hover:border-white/[0.12] rounded-[20px] p-5 transition-colors active:scale-[0.99]"
         >
           <div className="flex items-start justify-between mb-3">
-            <div className="p-2.5 bg-red-600/10 border border-red-600/20 rounded-xl">
-              <Wrench className="w-5 h-5 text-red-400" />
+            <div className="p-2.5 bg-[#7C5CFF]/10 border border-[#7C5CFF]/20 rounded-[12px]">
+              <Wrench className="w-5 h-5 text-[#A390FF]" />
             </div>
             {w.lows > 0 && (
-              <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-red-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF6961]">
                 {w.lows} low
               </span>
             )}
           </div>
-          <h4 className="font-bold text-white text-lg sm:text-base truncate">
+          <h4 className="font-bold text-white text-[18px] sm:text-[16px] truncate">
             {w.name}
           </h4>
-          <p className="text-sm sm:text-xs text-neutral-500 mt-0.5">
+          <p className="text-[14px] sm:text-[13px] text-white/50 mt-0.5">
             {w.total} bike{w.total !== 1 ? "s" : ""} worked
           </p>
           <div className="grid grid-cols-2 gap-2.5 mt-4">
-            <div className="bg-neutral-950/60 border border-neutral-800 rounded-lg p-2.5">
-              <span className="text-xs text-neutral-500 block mb-0.5">
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
+              <span className="text-[12px] text-white/40 block mb-0.5">
                 Overall
               </span>
-              <span className="font-mono font-bold text-yellow-400 text-base sm:text-sm">
+              <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
                 {w.avgOverall > 0 ? w.avgOverall.toFixed(2) : "—"}
               </span>
             </div>
-            <div className="bg-neutral-950/60 border border-neutral-800 rounded-lg p-2.5">
-              <span className="text-xs text-neutral-500 block mb-0.5">
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
+              <span className="text-[12px] text-white/40 block mb-0.5">
                 Service
               </span>
-              <span className="font-mono font-bold text-yellow-400 text-base sm:text-sm">
+              <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
                 {w.avgService > 0 ? w.avgService.toFixed(2) : "—"}
               </span>
             </div>
-            <div className="bg-neutral-950/60 border border-neutral-800 rounded-lg p-2.5">
-              <span className="text-xs text-neutral-500 block mb-0.5">
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
+              <span className="text-[12px] text-white/40 block mb-0.5">
                 Explain
               </span>
-              <span className="font-mono font-bold text-yellow-400 text-base sm:text-sm">
+              <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
                 {w.avgExplain > 0 ? w.avgExplain.toFixed(2) : "—"}
               </span>
             </div>
-            <div className="bg-neutral-950/60 border border-neutral-800 rounded-lg p-2.5">
-              <span className="text-xs text-neutral-500 block mb-0.5">
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
+              <span className="text-[12px] text-white/40 block mb-0.5">
                 Rec %
               </span>
-              <span className="font-mono font-bold text-emerald-400 text-base sm:text-sm">
+              <span className="font-mono font-bold text-[#30D158] text-[16px] sm:text-[14px]">
                 {w.recPct}%
               </span>
             </div>
           </div>
           {w.complaints > 0 && (
-            <p className="text-sm text-red-400 mt-3 font-semibold">
+            <p className="text-[14px] text-[#FF6961] mt-3 font-semibold">
               {w.complaints} complaint{w.complaints > 1 ? "s" : ""}
             </p>
           )}
@@ -1391,9 +1397,9 @@ function WorkersView({ workerStats, onOpenWorker }) {
 function AttentionView({ list, areaMap, onOpenDetail }) {
   if (list.length === 0) {
     return (
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 text-center">
-        <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-        <p className="text-base text-neutral-300">
+      <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-8 text-center">
+        <CheckCircle2 className="w-12 h-12 text-[#30D158] mx-auto mb-3" />
+        <p className="text-[15px] text-white/70">
           No complaints or low ratings in this range.
         </p>
       </div>
@@ -1432,26 +1438,26 @@ function CustomersView({
 
   return (
     <div className="space-y-4">
-      <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl space-y-3">
-        <label className="text-sm sm:text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">
+      <div className="bg-[#1C1C1E] border border-white/[0.06] p-4 rounded-[20px] space-y-3">
+        <label className="text-[14px] sm:text-[11px] font-semibold text-white/50 uppercase tracking-wider block">
           Search by Name, Mobile, or Bike Reg
         </label>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <Search className="w-5 h-5 sm:w-4 sm:h-4 text-neutral-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-5 h-5 sm:w-4 sm:h-4 text-white/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={(e) => onSearch(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && onRun()}
               placeholder="Ahmed / 0300 / LEA-1234"
-              className="w-full h-12 sm:h-11 bg-neutral-950/80 border border-neutral-800 rounded-xl pl-11 pr-4 text-base sm:text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-red-500"
+              className="w-full h-12 sm:h-11 bg-white/[0.03] border border-white/[0.08] rounded-[12px] pl-11 pr-4 text-[16px] sm:text-[15px] text-white placeholder-white/30 focus:outline-none focus:border-[#7C5CFF]/60"
             />
           </div>
           <div className="flex gap-2">
             <button
               onClick={onRun}
-              className="flex-1 sm:flex-none h-12 sm:h-11 px-6 bg-red-600 hover:bg-red-700 rounded-xl text-sm font-bold uppercase tracking-wide text-white transition-colors"
+              className={`flex-1 sm:flex-none h-12 sm:h-11 px-6 rounded-[12px] text-[15px] sm:text-[13px] font-semibold text-white transition-all active:scale-[0.98] border border-[#7C5CFF]/40 ${btnPrimary}`}
             >
               Search
             </button>
@@ -1461,7 +1467,7 @@ function CustomersView({
                   onSearch("");
                   setTimeout(onRun, 0);
                 }}
-                className="h-12 sm:h-11 px-4 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl text-sm font-bold uppercase tracking-wide text-neutral-400 hover:text-white transition-colors"
+                className="h-12 sm:h-11 px-4 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] rounded-[12px] text-[15px] sm:text-[13px] font-semibold text-white/70 hover:text-white transition-colors"
               >
                 Clear
               </button>
@@ -1470,7 +1476,7 @@ function CustomersView({
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-sm sm:text-xs text-neutral-500 px-1">
+      <div className="flex items-center justify-between text-[14px] sm:text-[12px] text-white/50 px-1">
         <span>
           {loading
             ? "Loading…"
@@ -1489,13 +1495,13 @@ function CustomersView({
       </div>
 
       {loading ? (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-12 flex items-center justify-center">
-          <Loader2 className="w-7 h-7 text-red-500 animate-spin" />
+        <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-12 flex items-center justify-center">
+          <Loader2 className="w-7 h-7 text-[#A390FF] animate-spin" />
         </div>
       ) : results.length === 0 ? (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 text-center">
-          <Users className="w-12 h-12 text-neutral-600 mx-auto mb-3" />
-          <p className="text-base text-neutral-400">
+        <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-8 text-center">
+          <Users className="w-12 h-12 text-white/20 mx-auto mb-3" />
+          <p className="text-[15px] text-white/60">
             {search.trim()
               ? "No customers match your search."
               : "No customers yet."}
@@ -1508,17 +1514,17 @@ function CustomersView({
               <button
                 key={c.id}
                 onClick={() => onOpen(c)}
-                className="w-full text-left bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl p-4 transition-colors flex items-center justify-between active:scale-[0.99]"
+                className="w-full text-left bg-[#1C1C1E] hover:bg-white/[0.04] border border-white/[0.06] rounded-[14px] p-4 transition-colors flex items-center justify-between active:scale-[0.99]"
               >
                 <div className="min-w-0">
-                  <p className="font-bold text-white truncate text-base sm:text-sm">
+                  <p className="font-semibold text-white truncate text-[16px] sm:text-[14px]">
                     {c.name}
                   </p>
-                  <p className="text-sm sm:text-xs text-neutral-500 font-mono truncate mt-0.5">
+                  <p className="text-[14px] sm:text-[12px] text-white/50 font-mono truncate mt-0.5">
                     {c.mobile} · {areaMap[c.area_id] || "—"}
                   </p>
                 </div>
-                <ChevronRight className="w-5 h-5 sm:w-4 sm:h-4 text-neutral-500 shrink-0 ml-2" />
+                <ChevronRight className="w-5 h-5 sm:w-4 sm:h-4 text-white/30 shrink-0 ml-2" />
               </button>
             ))}
           </div>
@@ -1528,21 +1534,21 @@ function CustomersView({
               <button
                 onClick={() => onPageChange(Math.max(1, page - 1))}
                 disabled={page === 1}
-                className="h-11 px-4 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed border border-neutral-800 rounded-xl text-sm font-bold uppercase tracking-wide text-neutral-300 transition-colors"
+                className="h-11 px-4 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed border border-white/[0.08] rounded-[12px] text-[15px] sm:text-[13px] font-semibold text-white/85 transition-colors"
               >
                 Prev
               </button>
               <button
                 onClick={() => onPageChange(Math.min(totalPages, page + 1))}
                 disabled={page === totalPages}
-                className="h-11 px-4 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed border border-neutral-800 rounded-xl text-sm font-bold uppercase tracking-wide text-neutral-300 transition-colors"
+                className="h-11 px-4 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed border border-white/[0.08] rounded-[12px] text-[15px] sm:text-[13px] font-semibold text-white/85 transition-colors"
               >
                 Next
               </button>
             </div>
           )}
           {totalPages > 1 && (
-            <p className="text-center text-sm text-neutral-500 font-mono">
+            <p className="text-center text-[14px] text-white/50 font-mono">
               Page {page} of {totalPages}
             </p>
           )}
@@ -1587,10 +1593,10 @@ function SettingsView({
           <button
             key={t.id}
             onClick={() => setSettingsTab(t.id)}
-            className={`h-11 sm:h-9 px-4 rounded-xl text-sm sm:text-xs font-bold uppercase tracking-wide border transition-all ${
+            className={`h-11 sm:h-9 px-4 rounded-[12px] text-[15px] sm:text-[12px] font-semibold uppercase tracking-wide border transition-all ${
               settingsTab === t.id
-                ? "bg-neutral-800 border-neutral-700 text-white"
-                : "bg-neutral-950 border-neutral-800 text-neutral-500 hover:text-white"
+                ? "bg-white/[0.08] border-white/[0.14] text-white"
+                : "bg-white/[0.03] border-white/[0.08] text-white/55 hover:text-white"
             }`}
           >
             {t.label}
@@ -1635,8 +1641,8 @@ function SettingsView({
       )}
 
       {settingsTab === "years" && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-4">
-          <h4 className="text-base sm:text-sm font-bold text-white">
+        <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-5 space-y-4">
+          <h4 className="text-[16px] sm:text-[14px] font-bold text-white">
             Bike Years
           </h4>
           <div className="flex gap-2">
@@ -1645,11 +1651,11 @@ function SettingsView({
               value={newYear}
               onChange={(e) => setNewYear(e.target.value)}
               placeholder="e.g. 2027"
-              className="flex-1 h-12 sm:h-11 bg-neutral-950 border border-neutral-800 rounded-xl px-4 text-base sm:text-sm text-white focus:outline-none focus:border-red-500"
+              className="flex-1 h-12 sm:h-11 bg-white/[0.03] border border-white/[0.08] rounded-[12px] px-4 text-[16px] sm:text-[15px] text-white focus:outline-none focus:border-[#7C5CFF]/60"
             />
             <button
               onClick={onAddYear}
-              className="h-12 w-12 sm:h-11 sm:w-11 bg-red-600 hover:bg-red-700 rounded-xl text-white flex items-center justify-center shrink-0"
+              className={`h-12 w-12 sm:h-11 sm:w-11 rounded-[12px] text-white flex items-center justify-center shrink-0 border border-[#7C5CFF]/40 ${btnPrimary}`}
             >
               <Plus className="w-5 h-5" />
             </button>
@@ -1658,46 +1664,49 @@ function SettingsView({
             {years.map((y) => (
               <span
                 key={y}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-neutral-950 border border-neutral-800 text-sm font-mono text-white"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.08] text-[15px] sm:text-[13px] font-mono text-white"
               >
                 {y}
                 <button
                   onClick={() => onDeleteYear(y)}
-                  className="text-neutral-500 hover:text-red-400"
+                  className="text-white/40 hover:text-[#FF6961]"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </span>
             ))}
             {years.length === 0 && (
-              <p className="text-sm text-neutral-500">Nothing yet.</p>
+              <p className="text-[15px] text-white/50">Nothing yet.</p>
             )}
           </div>
         </div>
       )}
 
       {settingsTab === "workers" && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-3">
-          <h4 className="text-base sm:text-sm font-bold text-white">Workers</h4>
-          <p className="text-sm sm:text-xs text-neutral-500">
-            Listing all active workers
+        <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-5 space-y-3">
+          <h4 className="text-[16px] sm:text-[14px] font-bold text-white">
+            Workers
+          </h4>
+          <p className="text-[14px] sm:text-[12px] text-white/50">
+            Workers come from the Employees list. Add or remove them in the
+            Employees tab.
           </p>
           <div className="space-y-2">
             {workers.map((w) => (
               <div
                 key={w.id}
-                className="flex items-center justify-between bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3"
+                className="flex items-center justify-between bg-white/[0.02] border border-white/[0.06] rounded-[12px] px-4 py-3"
               >
-                <span className="text-base sm:text-sm font-semibold text-white truncate">
+                <span className="text-[16px] sm:text-[14px] font-semibold text-white truncate">
                   {w.name}
                 </span>
-                <span className="text-xs font-bold uppercase px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                <span className="text-[11px] font-bold uppercase px-2 py-1 rounded-full bg-[#30D158]/10 border border-[#30D158]/20 text-[#30D158]">
                   Active
                 </span>
               </div>
             ))}
             {workers.length === 0 && (
-              <p className="text-sm text-neutral-500">
+              <p className="text-[15px] text-white/50">
                 No active workers. Add non-manager employees first.
               </p>
             )}
@@ -1719,8 +1728,10 @@ function SettingsList({
   placeholder,
 }) {
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-4">
-      <h4 className="text-base sm:text-sm font-bold text-white">{title}</h4>
+    <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-5 space-y-4">
+      <h4 className="text-[16px] sm:text-[14px] font-bold text-white">
+        {title}
+      </h4>
       <div className="flex gap-2">
         <input
           type="text"
@@ -1728,11 +1739,11 @@ function SettingsList({
           onChange={(e) => setAddValue(e.target.value)}
           placeholder={placeholder}
           onKeyDown={(e) => e.key === "Enter" && onAdd()}
-          className="flex-1 h-12 sm:h-11 bg-neutral-950 border border-neutral-800 rounded-xl px-4 text-base sm:text-sm text-white focus:outline-none focus:border-red-500 min-w-0"
+          className="flex-1 h-12 sm:h-11 bg-white/[0.03] border border-white/[0.08] rounded-[12px] px-4 text-[16px] sm:text-[15px] text-white focus:outline-none focus:border-[#7C5CFF]/60 min-w-0"
         />
         <button
           onClick={onAdd}
-          className="h-12 w-12 sm:h-11 sm:w-11 bg-red-600 hover:bg-red-700 rounded-xl text-white flex items-center justify-center shrink-0"
+          className={`h-12 w-12 sm:h-11 sm:w-11 rounded-[12px] text-white flex items-center justify-center shrink-0 border border-[#7C5CFF]/40 ${btnPrimary}`}
         >
           <Plus className="w-5 h-5" />
         </button>
@@ -1741,11 +1752,11 @@ function SettingsList({
         {items.map((it) => (
           <div
             key={it.id}
-            className="flex items-center justify-between gap-2 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3"
+            className="flex items-center justify-between gap-2 bg-white/[0.02] border border-white/[0.06] rounded-[12px] px-4 py-3"
           >
             <span
-              className={`text-base sm:text-sm font-semibold truncate ${
-                it.active ? "text-white" : "text-neutral-500 line-through"
+              className={`text-[16px] sm:text-[14px] font-semibold truncate ${
+                it.active ? "text-white" : "text-white/40 line-through"
               }`}
             >
               {it.name}
@@ -1754,7 +1765,9 @@ function SettingsList({
               <button
                 onClick={() => onToggle(it.raw)}
                 className={`relative w-12 h-7 rounded-full transition-colors ${
-                  it.active ? "bg-emerald-600" : "bg-neutral-700"
+                  it.active
+                    ? "bg-gradient-to-b from-[#42E366] to-[#28B94D]"
+                    : "bg-white/[0.12]"
                 }`}
               >
                 <span
@@ -1765,7 +1778,7 @@ function SettingsList({
               </button>
               <button
                 onClick={() => onDelete(it.raw)}
-                className="p-2.5 rounded-lg bg-neutral-900 hover:bg-red-950/40 border border-neutral-800 text-neutral-400 hover:text-red-400 transition-colors"
+                className="p-2.5 rounded-lg bg-white/[0.04] hover:bg-[#FF453A]/10 border border-white/[0.08] text-white/50 hover:text-[#FF6961] transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -1773,7 +1786,7 @@ function SettingsList({
           </div>
         ))}
         {items.length === 0 && (
-          <p className="text-sm text-neutral-500">Nothing yet.</p>
+          <p className="text-[15px] text-white/50">Nothing yet.</p>
         )}
       </div>
     </div>
@@ -1782,19 +1795,19 @@ function SettingsList({
 
 function ModalShell({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-black/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-black/85 backdrop-blur-xl">
       <div
-        className={`bg-neutral-900 border-t sm:border border-neutral-800 rounded-t-3xl sm:rounded-2xl w-full ${
+        className={`bg-[#1C1C1E] border-t sm:border border-white/[0.08] rounded-t-[24px] sm:rounded-[20px] w-full ${
           wide ? "sm:max-w-3xl" : "sm:max-w-xl"
         } max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl`}
       >
-        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
-          <h3 className="text-lg sm:text-base font-bold text-white truncate">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/[0.06] shrink-0">
+          <h3 className="text-[18px] sm:text-[16px] font-bold text-white truncate">
             {title}
           </h3>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors shrink-0"
+            className="p-2 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -1807,11 +1820,11 @@ function ModalShell({ title, onClose, children, wide }) {
 
 function Field({ label, children }) {
   return (
-    <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3.5">
-      <span className="text-xs font-medium text-neutral-400 block mb-1">
+    <div className="bg-white/[0.02] border border-white/[0.06] rounded-[12px] p-3.5">
+      <span className="text-[12px] sm:text-[11px] font-medium text-white/50 block mb-1">
         {label}
       </span>
-      <span className="text-base sm:text-sm font-medium text-neutral-100 break-words whitespace-pre-wrap">
+      <span className="text-[16px] sm:text-[14px] font-medium text-white break-words whitespace-pre-wrap">
         {children || "—"}
       </span>
     </div>
@@ -1824,19 +1837,19 @@ function ResponseDetailModal({ r, areaMap, bikeModelMap, onClose }) {
   return (
     <ModalShell title="Feedback Details" onClose={onClose} wide>
       <div className="space-y-4">
-        <div className="bg-gradient-to-r from-neutral-800/60 to-neutral-900/40 border border-neutral-800 rounded-xl p-4">
+        <div className="bg-white/[0.03] border border-white/[0.08] rounded-[14px] p-4">
           <div className="flex items-start justify-between flex-wrap gap-3">
             <div className="min-w-0">
-              <h4 className="text-lg sm:text-lg font-bold text-white truncate">
+              <h4 className="text-[18px] sm:text-[17px] font-bold text-white truncate">
                 {r.customer?.name}
               </h4>
-              <p className="text-sm sm:text-xs text-neutral-400 font-mono mt-0.5">
+              <p className="text-[14px] sm:text-[12px] text-white/60 font-mono mt-0.5">
                 {r.customer?.mobile} · {areaName}
               </p>
             </div>
             <div className="flex items-center gap-2">
               {isLow(r) && (
-                <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-red-400">
+                <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF6961]">
                   Low
                 </span>
               )}
@@ -1877,26 +1890,26 @@ function ResponseDetailModal({ r, areaMap, bikeModelMap, onClose }) {
         </div>
 
         <div>
-          <p className="text-sm sm:text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2">
+          <p className="text-[14px] sm:text-[12px] font-bold uppercase tracking-wider text-white/50 mb-2">
             Workers
           </p>
           <div className="flex flex-wrap gap-2">
             {(r.worker_list || []).map((w) => (
               <span
                 key={w.id}
-                className="text-sm font-bold px-3 py-1.5 rounded-full bg-red-600/10 border border-red-600/30 text-red-400"
+                className="text-[13px] font-bold px-3 py-1.5 rounded-full bg-[#7C5CFF]/10 border border-[#7C5CFF]/25 text-[#A390FF]"
               >
                 {w.name}
               </span>
             ))}
             {(r.worker_list || []).length === 0 && (
-              <span className="text-sm text-neutral-500">None credited</span>
+              <span className="text-[14px] text-white/50">None credited</span>
             )}
           </div>
         </div>
 
         <div>
-          <p className="text-sm sm:text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2">
+          <p className="text-[14px] sm:text-[12px] font-bold uppercase tracking-wider text-white/50 mb-2">
             Ratings
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -1910,9 +1923,9 @@ function ResponseDetailModal({ r, areaMap, bikeModelMap, onClose }) {
             ].map(([label, val]) => (
               <div
                 key={label}
-                className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3.5"
+                className="bg-white/[0.02] border border-white/[0.06] rounded-[12px] p-3.5"
               >
-                <span className="text-xs text-neutral-500 block mb-1.5">
+                <span className="text-[12px] text-white/50 block mb-1.5">
                   {label}
                 </span>
                 <div className="flex items-center gap-1">
@@ -1921,8 +1934,8 @@ function ResponseDetailModal({ r, areaMap, bikeModelMap, onClose }) {
                       key={n}
                       className={`w-4 h-4 ${
                         val >= n
-                          ? "fill-yellow-400 text-yellow-400"
-                          : "text-neutral-700"
+                          ? "fill-[#FFD60A] text-[#FFD60A]"
+                          : "text-white/15"
                       }`}
                     />
                   ))}
@@ -1934,10 +1947,10 @@ function ResponseDetailModal({ r, areaMap, bikeModelMap, onClose }) {
 
         {r.comment && r.comment.trim() && (
           <div>
-            <p className="text-sm sm:text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2">
+            <p className="text-[14px] sm:text-[12px] font-bold uppercase tracking-wider text-white/50 mb-2">
               Customer Comment
             </p>
-            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 text-base sm:text-sm text-neutral-200 whitespace-pre-wrap">
+            <div className="bg-[#FFD60A]/[0.06] border border-[#FFD60A]/20 rounded-[12px] p-4 text-[16px] sm:text-[14px] text-white/90 whitespace-pre-wrap">
               {r.comment}
             </div>
           </div>
@@ -1973,11 +1986,11 @@ function WorkerDetailModal({
           <KpiCard
             label="Complaints"
             value={mine.filter((r) => r.comment?.trim()).length}
-            accent="purple"
+            accent="red"
           />
         </div>
         <div className="space-y-2.5">
-          <p className="text-sm sm:text-xs font-bold uppercase tracking-wider text-neutral-400">
+          <p className="text-[14px] sm:text-[12px] font-bold uppercase tracking-wider text-white/50">
             All Feedback
           </p>
           {mine.map((r) => (
@@ -2006,16 +2019,16 @@ function CustomerDetailModal({
   return (
     <ModalShell title="Customer History" onClose={onClose} wide>
       <div className="space-y-4">
-        <div className="bg-gradient-to-r from-neutral-800/60 to-neutral-900/40 border border-neutral-800 rounded-xl p-4">
-          <h4 className="text-lg font-bold text-white truncate">
+        <div className="bg-white/[0.03] border border-white/[0.08] rounded-[14px] p-4">
+          <h4 className="text-[18px] sm:text-[17px] font-bold text-white truncate">
             {customer.name}
           </h4>
-          <p className="text-sm sm:text-xs text-neutral-400 font-mono mt-0.5">
+          <p className="text-[14px] sm:text-[12px] text-white/60 font-mono mt-0.5">
             {customer.mobile} · {areaMap[customer.area_id] || "—"}
           </p>
         </div>
         <div className="space-y-2.5">
-          <p className="text-sm sm:text-xs font-bold uppercase tracking-wider text-neutral-400">
+          <p className="text-[14px] sm:text-[12px] font-bold uppercase tracking-wider text-white/50">
             {responses.length} previous visit
             {responses.length !== 1 ? "s" : ""}
           </p>
@@ -2027,7 +2040,7 @@ function CustomerDetailModal({
                 bikeModelMap={bikeModelMap}
                 onOpen={() => onOpenDetail(r)}
               />
-              <div className="pl-3 text-xs text-neutral-500">
+              <div className="pl-3 text-[12px] text-white/40">
                 Work by:{" "}
                 {(r.worker_list || []).map((w) => w.name).join(", ") || "—"}
               </div>
