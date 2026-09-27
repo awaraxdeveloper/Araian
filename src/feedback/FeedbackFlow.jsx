@@ -20,7 +20,7 @@ import {
   Clock,
   X,
   Calendar,
-  Home,
+  Hash,
 } from "lucide-react";
 
 const TOTAL_STEPS = 12;
@@ -31,11 +31,11 @@ const emptyForm = {
   mobile: "",
   areaId: "",
   areaOther: "",
-  address: "",
+  visitNumber: "",
   bikeRegNo: "",
   bikeModelId: "",
   bikeYear: "",
-  workers: [],
+  workerId: "",
   attention: "",
   computerDiagnosis: "",
   computerRpmCheck: "",
@@ -89,6 +89,7 @@ function AutoSuggestInput({
   suggestions,
   onSelect,
   required,
+  uppercase,
   type = "text",
   inputMode,
   maxLength,
@@ -150,7 +151,9 @@ function AutoSuggestInput({
           }}
           onFocus={() => setOpen(true)}
           placeholder={`${label}${required ? " *" : ""}`}
-          className="w-full bg-transparent border-0 p-0 text-[17px] leading-tight text-white placeholder-white/45 font-medium focus:outline-none"
+          className={`w-full bg-transparent border-0 p-0 text-[17px] leading-tight text-white placeholder-white/30 font-medium focus:outline-none ${
+            uppercase ? "uppercase" : ""
+          }`}
         />
       </div>
       {open && suggestions.length > 0 && dropPos && (
@@ -208,7 +211,7 @@ function GlassSelect({
         )}
         <span
           className={`flex-1 min-w-0 text-left truncate text-[17px] leading-tight font-medium ${
-            current ? "text-white" : "text-white/45"
+            current ? "text-white" : "text-white/30"
           }`}
         >
           {current ? current.label : `${label}${required ? " *" : ""}`}
@@ -235,16 +238,9 @@ function GlassSelect({
   );
 }
 
-function WorkerMultiSelect({ workers, value, onChange }) {
+function WorkerSelect({ workers, value, onChange }) {
   const [open, setOpen] = useState(false);
-  const selected = workers.filter((w) => value.includes(w.id));
-
-  const toggle = (id) => {
-    if (value.includes(id)) onChange(value.filter((v) => v !== id));
-    else onChange([...value, id]);
-  };
-
-  const hasSelection = selected.length > 0;
+  const current = workers.find((w) => w.id === value);
 
   return (
     <>
@@ -254,35 +250,27 @@ function WorkerMultiSelect({ workers, value, onChange }) {
         className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-white/[0.02] active:bg-white/[0.04] transition-colors cursor-pointer"
       >
         <Wrench className="w-5 h-5 text-white/40 shrink-0" strokeWidth={1.75} />
-        <div className="flex-1 min-w-0">
-          {hasSelection ? (
-            <div className="flex flex-wrap gap-1.5">
-              {selected.map((w) => (
-                <span
-                  key={w.id}
-                  className="text-[13px] font-semibold px-2.5 py-1 rounded-lg bg-[#7C5CFF]/15 border border-[#7C5CFF]/30 text-[#A390FF]"
-                >
-                  {w.name}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <span className="block text-[17px] leading-tight text-white/45 font-medium">
-              Work By *
-            </span>
-          )}
-        </div>
+        <span
+          className={`flex-1 min-w-0 text-left truncate text-[17px] leading-tight font-medium ${
+            current ? "text-white" : "text-white/30"
+          }`}
+        >
+          {current ? current.name : "Work By *"}
+        </span>
         <ChevronRight
           className="w-5 h-5 text-white/25 shrink-0"
           strokeWidth={2}
         />
       </button>
       {open && (
-        <IOSMultiPickerSheet
-          title="Select Workers"
-          items={workers.map((w) => ({ id: w.id, label: w.name }))}
-          selectedIds={value}
-          onToggle={toggle}
+        <IOSPickerSheet
+          title="Select Worker"
+          options={workers.map((w) => ({ value: w.id, label: w.name }))}
+          value={value}
+          onSelect={(v) => {
+            onChange(v);
+            setOpen(false);
+          }}
           onClose={() => setOpen(false)}
           emptyLabel="No workers available"
         />
@@ -572,11 +560,11 @@ export default function FeedbackFlow({
           .order("year", { ascending: false }),
         supabase
           .from("employees")
-          .select("id,name")
+          .select("id,name,base_salary")
           .eq("company_id", companyId)
           .eq("is_manager", false)
           .eq("is_active", true)
-          .order("name"),
+          .order("base_salary", { ascending: false }),
       ]);
       setAreas(a.data || []);
       setBikeModels(m.data || []);
@@ -757,7 +745,6 @@ export default function FeedbackFlow({
       name: s.name || prev.name,
       mobile: s.mobile || prev.mobile,
       areaId: s.area_id || prev.areaId,
-      address: s.address || prev.address,
     }));
 
     const { data } = await supabase
@@ -790,7 +777,6 @@ export default function FeedbackFlow({
       name: prev.name || s.customer?.name || "",
       mobile: prev.mobile || s.customer?.mobile || "",
       areaId: prev.areaId || s.customer?.area_id || "",
-      address: prev.address || s.customer?.address || "",
     }));
     triggerToast("Bike details pre-filled");
   };
@@ -805,7 +791,7 @@ export default function FeedbackFlow({
           form.bikeRegNo.trim().length >= 3 &&
           form.bikeModelId &&
           form.bikeYear &&
-          form.workers.length > 0
+          form.workerId
         );
       case 2:
         return !!form.attention;
@@ -872,6 +858,11 @@ export default function FeedbackFlow({
         customerId = newCust.id;
       }
 
+      const visitNum =
+        form.visitNumber === "" || form.visitNumber === null
+          ? null
+          : Number(form.visitNumber);
+
       const { data: resp, error: respErr } = await supabase
         .from("fb_responses")
         .insert({
@@ -880,6 +871,7 @@ export default function FeedbackFlow({
           bike_reg_no: form.bikeRegNo.trim().toUpperCase(),
           bike_model_id: form.bikeModelId,
           bike_year: Number(form.bikeYear),
+          visit_number: visitNum,
           taken_by_user_id: currentUser.id,
           taken_by_name:
             currentUser.full_name || currentUser.username || "Staff",
@@ -899,14 +891,13 @@ export default function FeedbackFlow({
         .single();
       if (respErr) throw respErr;
 
-      if (form.workers.length) {
-        const rows = form.workers.map((wid) => ({
-          response_id: resp.id,
-          worker_id: wid,
-        }));
+      if (form.workerId) {
         const { error: wErr } = await supabase
           .from("fb_response_workers")
-          .insert(rows);
+          .insert({
+            response_id: resp.id,
+            worker_id: form.workerId,
+          });
         if (wErr) throw wErr;
       }
 
@@ -1497,23 +1488,20 @@ function StepCustomer({
                 value={form.areaOther}
                 onChange={(e) => setField("areaOther", e.target.value)}
                 placeholder="Specify Area"
-                className="w-full bg-transparent border-0 p-0 text-[17px] leading-tight text-white placeholder-white/45 font-medium focus:outline-none"
+                className="w-full bg-transparent border-0 p-0 text-[17px] leading-tight text-white placeholder-white/30 font-medium focus:outline-none"
               />
             </div>
           )}
-          <div className="flex items-center gap-3 px-4 py-3.5">
-            <Home
-              className="w-5 h-5 text-white/40 shrink-0"
-              strokeWidth={1.75}
-            />
-            <input
-              type="text"
-              value={form.address}
-              onChange={(e) => setField("address", e.target.value)}
-              placeholder="Address (Optional)"
-              className="w-full bg-transparent border-0 p-0 text-[17px] leading-tight text-white placeholder-white/45 font-medium focus:outline-none"
-            />
-          </div>
+          <GlassSelect
+            label="Visit"
+            icon={Hash}
+            value={form.visitNumber}
+            onChange={(v) => setField("visitNumber", v)}
+            options={Array.from({ length: 101 }, (_, i) => ({
+              value: String(i),
+              label: `Visit ${i}`,
+            }))}
+          />
         </div>
       </div>
 
@@ -1527,8 +1515,9 @@ function StepCustomer({
             label="Registration No."
             icon={Bike}
             required
+            uppercase
             value={form.bikeRegNo}
-            onChange={(v) => setField("bikeRegNo", v.toUpperCase())}
+            onChange={(v) => setField("bikeRegNo", v)}
             suggestions={bikeSuggestions}
             onSelect={onPickBike}
           />
@@ -1557,10 +1546,10 @@ function StepCustomer({
           Work Details
         </p>
         <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[18px] overflow-hidden">
-          <WorkerMultiSelect
+          <WorkerSelect
             workers={workers}
-            value={form.workers}
-            onChange={(v) => setField("workers", v)}
+            value={form.workerId}
+            onChange={(v) => setField("workerId", v)}
           />
         </div>
       </div>

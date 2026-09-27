@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import CustomDatePicker from "../components/ui/CustomDatePicker";
 import CustomSelect from "../components/ui/CustomSelect";
@@ -116,6 +116,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
   const [filterBike, setFilterBike] = useState("");
   const [filterWorker, setFilterWorker] = useState("");
   const [search, setSearch] = useState("");
+  const [customerVisitSort, setCustomerVisitSort] = useState("");
 
   const [responses, setResponses] = useState([]);
   const [areas, setAreas] = useState([]);
@@ -139,6 +140,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
   const [customersPage, setCustomersPage] = useState(1);
   const [customersTotal, setCustomersTotal] = useState(0);
   const [customersLoading, setCustomersLoading] = useState(false);
+  const customersReqId = useRef(0);
 
   const loadDropdowns = async () => {
     const [a, m, y, w] = await Promise.all([
@@ -589,60 +591,114 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
     loadDropdowns();
   };
 
-  const loadCustomers = async (page = 1, query = "") => {
+  const loadCustomers = async (page = 1, query = "", visitSort = "") => {
+    const reqId = ++customersReqId.current;
     setCustomersLoading(true);
     try {
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
       const q = query.trim();
 
+      let all = [];
+
       if (!q) {
-        const { data, count, error } = await supabase
+        if (!visitSort) {
+          const { data, count, error } = await supabase
+            .from("fb_customers")
+            .select("id,name,mobile,area_id,created_at", { count: "exact" })
+            .eq("company_id", companyId)
+            .order("created_at", { ascending: false })
+            .range(from, to);
+          if (error) throw error;
+          if (reqId !== customersReqId.current) return;
+          setCustomerResults(data || []);
+          setCustomersTotal(count || 0);
+          setCustomersPage(page);
+          return;
+        }
+        const { data, error } = await supabase
           .from("fb_customers")
-          .select("id,name,mobile,area_id,created_at", { count: "exact" })
-          .eq("company_id", companyId)
-          .order("created_at", { ascending: false })
-          .range(from, to);
+          .select("id,name,mobile,area_id,created_at")
+          .eq("company_id", companyId);
         if (error) throw error;
-        setCustomerResults(data || []);
-        setCustomersTotal(count || 0);
-        setCustomersPage(page);
-        return;
+        all = data || [];
+      } else {
+        const [byName, byMobile, byBike] = await Promise.all([
+          supabase
+            .from("fb_customers")
+            .select("id,name,mobile,area_id,created_at")
+            .eq("company_id", companyId)
+            .ilike("name", `%${q}%`)
+            .limit(200),
+          supabase
+            .from("fb_customers")
+            .select("id,name,mobile,area_id,created_at")
+            .eq("company_id", companyId)
+            .ilike("mobile", `%${q.replace(/\D/g, "")}%`)
+            .limit(200),
+          supabase
+            .from("fb_responses")
+            .select("customer:fb_customers(id,name,mobile,area_id,created_at)")
+            .eq("company_id", companyId)
+            .ilike("bike_reg_no", `%${q}%`)
+            .limit(200),
+        ]);
+        const map = new Map();
+        (byName.data || []).forEach((c) => map.set(c.id, c));
+        (byMobile.data || []).forEach((c) => map.set(c.id, c));
+        (byBike.data || []).forEach((r) => {
+          if (r.customer) map.set(r.customer.id, r.customer);
+        });
+        all = Array.from(map.values());
       }
 
-      const [byName, byMobile, byBike] = await Promise.all([
-        supabase
-          .from("fb_customers")
-          .select("id,name,mobile,area_id,created_at")
-          .eq("company_id", companyId)
-          .ilike("name", `%${q}%`)
-          .order("created_at", { ascending: false })
-          .limit(200),
-        supabase
-          .from("fb_customers")
-          .select("id,name,mobile,area_id,created_at")
-          .eq("company_id", companyId)
-          .ilike("mobile", `%${q.replace(/\D/g, "")}%`)
-          .order("created_at", { ascending: false })
-          .limit(200),
-        supabase
-          .from("fb_responses")
-          .select("customer:fb_customers(id,name,mobile,area_id,created_at)")
-          .eq("company_id", companyId)
-          .ilike("bike_reg_no", `%${q}%`)
-          .limit(200),
-      ]);
+      if (visitSort) {
+        const ids = all.map((c) => c.id);
+        if (ids.length > 0) {
+          const { data: respData, error: respErr } = await supabase
+            .from("fb_responses")
+            .select("customer_id, visit_number")
+            .eq("company_id", companyId)
+            .in("customer_id", ids);
+          if (respErr) throw respErr;
 
-      const map = new Map();
-      (byName.data || []).forEach((c) => map.set(c.id, c));
-      (byMobile.data || []).forEach((c) => map.set(c.id, c));
-      (byBike.data || []).forEach((r) => {
-        if (r.customer) map.set(r.customer.id, r.customer);
-      });
+          const maxVisit = {};
+          const visitCount = {};
+          (respData || []).forEach((r) => {
+            if (r.visit_number !== null && r.visit_number !== undefined) {
+              if (
+                maxVisit[r.customer_id] === undefined ||
+                r.visit_number > maxVisit[r.customer_id]
+              ) {
+                maxVisit[r.customer_id] = r.visit_number;
+              }
+            }
+            visitCount[r.customer_id] = (visitCount[r.customer_id] || 0) + 1;
+          });
 
-      const all = Array.from(map.values()).sort(
-        (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
-      );
+          // Sort key = explicit visit_number if present, else number of visits.
+          const keyOf = (cid) => {
+            if (maxVisit[cid] !== undefined) return maxVisit[cid];
+            return visitCount[cid] || 0;
+          };
+
+          all = [...all].sort((a, b) => {
+            const va = keyOf(a.id);
+            const vb = keyOf(b.id);
+            if (va === vb) {
+              return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            }
+            return visitSort === "desc" ? vb - va : va - vb;
+          });
+        }
+      } else {
+        all = [...all].sort(
+          (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+        );
+      }
+
+      if (reqId !== customersReqId.current) return;
+
       const paged = all.slice(from, to + 1);
       setCustomerResults(paged);
       setCustomersTotal(all.length);
@@ -650,20 +706,28 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
     } catch (err) {
       console.error("[load customers]", err);
     } finally {
-      setCustomersLoading(false);
+      if (reqId === customersReqId.current) {
+        setCustomersLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     if (subTab !== "customers") return;
-    loadCustomers(1, customerSearch);
+    loadCustomers(1, customerSearch, customerVisitSort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTab, companyId]);
+  }, [subTab, companyId, customerVisitSort]);
 
   const openCustomer = async (c) => {
     const { data } = await supabase
       .from("fb_responses")
-      .select(`*, workers:fb_response_workers(worker:employees(id,name))`)
+      .select(
+        `
+        *,
+        customer:fb_customers(id,name,mobile,area_id,area_other_text,address,created_at),
+        workers:fb_response_workers(worker:employees(id,name))
+      `
+      )
       .eq("company_id", companyId)
       .eq("customer_id", c.id)
       .order("created_at", { ascending: false });
@@ -885,7 +949,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
         <CustomersView
           search={customerSearch}
           onSearch={setCustomerSearch}
-          onRun={() => loadCustomers(1, customerSearch)}
+          onRun={() => loadCustomers(1, customerSearch, customerVisitSort)}
           results={customerResults}
           areaMap={areaMap}
           onOpen={openCustomer}
@@ -893,7 +957,11 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
           pageSize={PAGE_SIZE}
           total={customersTotal}
           loading={customersLoading}
-          onPageChange={(p) => loadCustomers(p, customerSearch)}
+          onPageChange={(p) =>
+            loadCustomers(p, customerSearch, customerVisitSort)
+          }
+          visitSort={customerVisitSort}
+          onVisitSortChange={setCustomerVisitSort}
         />
       )}
       {!loading && subTab === "settings" && (
@@ -1109,28 +1177,6 @@ function OverviewView({
             </div>
           )}
         </div>
-      </div>
-
-      <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4">
-        <h4 className="text-[16px] sm:text-[14px] font-bold text-white flex items-center gap-2">
-          <Sparkles className="w-5 h-5 sm:w-4 sm:h-4 text-[#A390FF]" />
-          Recent Submissions
-        </h4>
-        {recent.length === 0 ? (
-          <p className="text-[14px] text-white/50">No recent feedback.</p>
-        ) : (
-          <div className="space-y-2.5">
-            {recent.map((r) => (
-              <ResponseRow
-                key={r.id}
-                r={r}
-                areaMap={areaMap}
-                bikeModelMap={bikeModelMap}
-                onOpen={() => onOpenDetail(r)}
-              />
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1432,6 +1478,8 @@ function CustomersView({
   total,
   loading,
   onPageChange,
+  visitSort,
+  onVisitSortChange,
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const startIdx = (page - 1) * pageSize;
@@ -1473,6 +1521,31 @@ function CustomersView({
               </button>
             )}
           </div>
+        </div>
+      </div>
+
+      <div className="bg-[#1C1C1E] border border-white/[0.06] p-4 rounded-[20px]">
+        <label className="text-[14px] sm:text-[11px] font-semibold text-white/50 uppercase tracking-wider block mb-2">
+          Sort by Visit
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: "", label: "Default" },
+            { value: "desc", label: "Most Visited" },
+            { value: "asc", label: "Least Visited" },
+          ].map((o) => (
+            <button
+              key={o.value}
+              onClick={() => onVisitSortChange(o.value)}
+              className={`h-11 sm:h-9 px-4 rounded-[12px] text-[15px] sm:text-[12px] font-semibold uppercase tracking-wide border transition-all ${
+                visitSort === o.value
+                  ? "bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] border-[#7C5CFF]/40 text-white shadow-[0_8px_20px_-8px_rgba(124,92,255,0.6)]"
+                  : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white hover:bg-white/[0.05]"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1885,6 +1958,11 @@ function ResponseDetailModal({ r, areaMap, bikeModelMap, onClose }) {
               ? "Yes"
               : r.computer_rpm_check === "no"
               ? "No"
+              : "—"}
+          </Field>
+          <Field label="Visit Number">
+            {r.visit_number !== null && r.visit_number !== undefined
+              ? r.visit_number
               : "—"}
           </Field>
         </div>
