@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import CustomDatePicker from "../components/ui/CustomDatePicker";
 import CustomSelect from "../components/ui/CustomSelect";
+import FeedbackQuestionsTab from "./FeedbackQuestionsTab";
 import {
   BarChart3,
   MessageSquare,
@@ -141,6 +142,21 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
   const [customersTotal, setCustomersTotal] = useState(0);
   const [customersLoading, setCustomersLoading] = useState(false);
   const customersReqId = useRef(0);
+
+  const [toast, setToast] = useState(null);
+  const triggerToast = (message, type = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const askConfirm = (title, message, onConfirm) =>
+    setConfirmDialog({ title, message, onConfirm });
+  const closeConfirm = () => setConfirmDialog(null);
+  const handleConfirm = async () => {
+    if (confirmDialog?.onConfirm) await confirmDialog.onConfirm();
+    setConfirmDialog(null);
+  };
 
   const loadDropdowns = async () => {
     const [a, m, y, w] = await Promise.all([
@@ -527,67 +543,128 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
     const v = newArea.trim();
     if (!v) return;
     const max = areas.reduce((m, a) => Math.max(m, a.sort_order || 0), 0);
-    await supabase.from("fb_areas").insert({
+    const { error } = await supabase.from("fb_areas").insert({
       company_id: companyId,
       name: v,
       sort_order: v.toLowerCase() === "other" ? 999 : max + 1,
     });
+    if (error) {
+      triggerToast(`Failed to add area: ${error.message}`, "error");
+      return;
+    }
+    triggerToast(`Area "${v}" added`);
     setNewArea("");
     loadDropdowns();
   };
   const toggleArea = async (a) => {
-    await supabase
+    const { error } = await supabase
       .from("fb_areas")
       .update({ active: !a.active })
       .eq("id", a.id);
+    if (error) {
+      triggerToast(`Failed to update: ${error.message}`, "error");
+      return;
+    }
+    triggerToast(`Area "${a.name}" ${!a.active ? "enabled" : "disabled"}`);
     loadDropdowns();
   };
-  const deleteArea = async (a) => {
-    if (!window.confirm(`Delete area "${a.name}"?`)) return;
-    await supabase.from("fb_areas").delete().eq("id", a.id);
-    loadDropdowns();
+  const deleteArea = (a) => {
+    askConfirm(
+      "Delete Area?",
+      `"${a.name}" will be permanently removed from the customer form.`,
+      async () => {
+        const { error } = await supabase
+          .from("fb_areas")
+          .delete()
+          .eq("id", a.id);
+        if (error) {
+          triggerToast(`Failed to delete: ${error.message}`, "error");
+          return;
+        }
+        triggerToast(`Area "${a.name}" deleted`);
+        loadDropdowns();
+      }
+    );
   };
 
   const addBike = async () => {
     const v = newBike.trim();
     if (!v) return;
     const max = bikeModels.reduce((m, b) => Math.max(m, b.sort_order || 0), 0);
-    await supabase.from("fb_bike_models").insert({
+    const { error } = await supabase.from("fb_bike_models").insert({
       company_id: companyId,
       name: v,
       sort_order: v.toLowerCase() === "other" ? 999 : max + 1,
     });
+    if (error) {
+      triggerToast(`Failed to add bike model: ${error.message}`, "error");
+      return;
+    }
+    triggerToast(`Bike model "${v}" added`);
     setNewBike("");
     loadDropdowns();
   };
   const toggleBike = async (b) => {
-    await supabase
+    const { error } = await supabase
       .from("fb_bike_models")
       .update({ active: !b.active })
       .eq("id", b.id);
+    if (error) {
+      triggerToast(`Failed to update: ${error.message}`, "error");
+      return;
+    }
+    triggerToast(
+      `Bike model "${b.name}" ${!b.active ? "enabled" : "disabled"}`
+    );
     loadDropdowns();
   };
-  const deleteBike = async (b) => {
-    if (!window.confirm(`Delete bike model "${b.name}"?`)) return;
-    await supabase.from("fb_bike_models").delete().eq("id", b.id);
-    loadDropdowns();
+  const deleteBike = (b) => {
+    askConfirm(
+      "Delete Bike Model?",
+      `"${b.name}" will be permanently removed from the customer form.`,
+      async () => {
+        const { error } = await supabase
+          .from("fb_bike_models")
+          .delete()
+          .eq("id", b.id);
+        if (error) {
+          triggerToast(`Failed to delete: ${error.message}`, "error");
+          return;
+        }
+        triggerToast(`Bike model "${b.name}" deleted`);
+        loadDropdowns();
+      }
+    );
   };
 
   const addYear = async () => {
     const v = Number(newYear);
-    if (!v || v < 1990 || v > 2100) return;
-    await supabase
+    if (!v || v < 1990 || v > 2100) {
+      triggerToast("Enter a valid year (1990–2100)", "error");
+      return;
+    }
+    const { error } = await supabase
       .from("fb_bike_years")
       .insert({ company_id: companyId, year: v });
+    if (error) {
+      triggerToast(`Failed to add year: ${error.message}`, "error");
+      return;
+    }
+    triggerToast(`Year ${v} added`);
     setNewYear("");
     loadDropdowns();
   };
   const deleteYear = async (year) => {
-    await supabase
+    const { error } = await supabase
       .from("fb_bike_years")
       .delete()
       .eq("company_id", companyId)
       .eq("year", year);
+    if (error) {
+      triggerToast(`Failed to delete: ${error.message}`, "error");
+      return;
+    }
+    triggerToast(`Year ${year} deleted`);
     loadDropdowns();
   };
 
@@ -744,6 +821,29 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
 
   return (
     <div className="w-full space-y-5 sm:space-y-6 pb-6">
+      {toast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-3 rounded-[14px] shadow-2xl shadow-black/80 border border-white/[0.08] bg-[#1C1C1E]/95 backdrop-blur-2xl text-white max-w-[90vw]">
+          {toast.type === "error" ? (
+            <div className="p-1.5 rounded-[8px] bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF453A] shrink-0">
+              <AlertCircle className="w-4 h-4" />
+            </div>
+          ) : (
+            <div className="p-1.5 rounded-[8px] bg-[#30D158]/10 border border-[#30D158]/25 text-[#30D158] shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          )}
+          <span className="text-[14px] sm:text-[12px] font-semibold">
+            {toast.message}
+          </span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors ml-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
           <h1 className="text-[26px] sm:text-[24px] font-bold text-white tracking-tight leading-tight">
@@ -968,6 +1068,8 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
         <SettingsView
           settingsTab={settingsTab}
           setSettingsTab={setSettingsTab}
+          companyId={companyId}
+          showToast={triggerToast}
           areas={areas}
           bikeModels={bikeModels}
           years={bikeYears}
@@ -1018,6 +1120,53 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
           onOpenDetail={setDetailResponse}
         />
       )}
+
+      {confirmDialog && (
+        <DashboardConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          onCancel={closeConfirm}
+          onConfirm={handleConfirm}
+        />
+      )}
+    </div>
+  );
+}
+
+function DashboardConfirmModal({ title, message, onCancel, onConfirm }) {
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/85 backdrop-blur-xl">
+      <div className="w-full max-w-md bg-[#1C1C1E] border border-white/[0.08] rounded-[20px] p-6 shadow-2xl">
+        <div className="flex items-start gap-4">
+          <div className="p-3 bg-[#FF453A]/10 border border-[#FF453A]/25 rounded-[14px] text-[#FF453A] shrink-0">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[16px] font-bold text-white tracking-tight">
+              {title}
+            </h3>
+            <p className="text-[14px] text-white/60 mt-1 leading-relaxed">
+              {message}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 h-12 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] rounded-[14px] text-[15px] font-semibold text-white/85 transition-colors active:scale-[0.98]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 h-12 bg-gradient-to-b from-[#FF6B60] to-[#E0382E] hover:from-[#FF7B70] hover:to-[#E0382E] text-white rounded-[14px] text-[15px] font-semibold transition-all shadow-[0_10px_28px_-10px_rgba(255,69,58,0.6)] active:scale-[0.98]"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1634,6 +1783,8 @@ function CustomersView({
 function SettingsView({
   settingsTab,
   setSettingsTab,
+  companyId,
+  showToast,
   areas,
   bikeModels,
   years,
@@ -1654,6 +1805,7 @@ function SettingsView({
   workers,
 }) {
   const tabs = [
+    { id: "questions", label: "Questions" },
     { id: "areas", label: "Areas" },
     { id: "bikes", label: "Bikes" },
     { id: "years", label: "Years" },
@@ -1676,6 +1828,10 @@ function SettingsView({
           </button>
         ))}
       </div>
+
+      {settingsTab === "questions" && (
+        <FeedbackQuestionsTab companyId={companyId} showToast={showToast} />
+      )}
 
       {settingsTab === "areas" && (
         <SettingsList

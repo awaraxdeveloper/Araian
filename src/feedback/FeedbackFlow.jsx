@@ -23,7 +23,7 @@ import {
   Hash,
 } from "lucide-react";
 
-const TOTAL_STEPS = 12;
+// TOTAL_STEPS is now dynamic — computed at runtime from the questions table.
 
 const emptyForm = {
   customerId: null,
@@ -524,9 +524,19 @@ export default function FeedbackFlow({
   const [bikeYears, setBikeYears] = useState([]);
   const [workers, setWorkers] = useState([]);
 
+  const [questions, setQuestions] = useState([]);
+  const [answers, setAnswers] = useState({});
+  const [questionsLoaded, setQuestionsLoaded] = useState(false);
+
   const [nameSuggestions, setNameSuggestions] = useState([]);
   const [mobileSuggestions, setMobileSuggestions] = useState([]);
   const [bikeSuggestions, setBikeSuggestions] = useState([]);
+
+  const activeQuestions = React.useMemo(
+    () => questions.filter((q) => q.active),
+    [questions]
+  );
+  const TOTAL_STEPS = 1 + activeQuestions.length;
 
   const triggerToast = (message, type = "success") => {
     setToast({ message, type });
@@ -539,7 +549,7 @@ export default function FeedbackFlow({
   useEffect(() => {
     if (!companyId) return;
     (async () => {
-      const [a, m, y, w] = await Promise.all([
+      const [a, m, y, w, q] = await Promise.all([
         supabase
           .from("fb_areas")
           .select("id,name")
@@ -565,11 +575,18 @@ export default function FeedbackFlow({
           .eq("is_manager", false)
           .eq("is_active", true)
           .order("base_salary", { ascending: false }),
+        supabase
+          .from("fb_questions")
+          .select("*")
+          .eq("company_id", companyId)
+          .order("sort_order", { ascending: true }),
       ]);
       setAreas(a.data || []);
       setBikeModels(m.data || []);
       setBikeYears((y.data || []).map((r) => r.year));
       setWorkers(w.data || []);
+      setQuestions(q.data || []);
+      setQuestionsLoaded(true);
     })();
   }, [companyId]);
 
@@ -624,6 +641,7 @@ export default function FeedbackFlow({
           .from("fb_drafts")
           .update({
             form_data: form,
+            answers: answers,
             current_step: step,
             updated_at: new Date().toISOString(),
           })
@@ -635,6 +653,7 @@ export default function FeedbackFlow({
             company_id: companyId,
             user_id: currentUser.id,
             form_data: form,
+            answers: answers,
             current_step: step,
           })
           .select("id")
@@ -644,7 +663,16 @@ export default function FeedbackFlow({
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, step, draftLoaded, view, companyId, currentUser?.id, draftId]);
+  }, [
+    form,
+    answers,
+    step,
+    draftLoaded,
+    view,
+    companyId,
+    currentUser?.id,
+    draftId,
+  ]);
 
   // Autosuggests
   useEffect(() => {
@@ -782,42 +810,25 @@ export default function FeedbackFlow({
   };
 
   const stepValid = () => {
-    switch (step) {
-      case 1:
-        return (
-          form.name.trim().length > 1 &&
-          form.mobile.replace(/\D/g, "").length >= 10 &&
-          form.areaId &&
-          form.bikeRegNo.trim().length >= 3 &&
-          form.bikeModelId &&
-          form.bikeYear &&
-          form.workerId
-        );
-      case 2:
-        return !!form.attention;
-      case 3:
-        return !!form.computerDiagnosis;
-      case 4:
-        return !!form.computerRpmCheck;
-      case 5:
-        return form.rStaff > 0;
-      case 6:
-        return form.rService > 0;
-      case 7:
-        return form.rExplain > 0;
-      case 8:
-        return form.rFacility > 0;
-      case 9:
-        return form.rWait > 0;
-      case 10:
-        return form.rOverall > 0;
-      case 11:
-        return !!form.recommendation;
-      case 12:
-        return true;
-      default:
-        return false;
+    if (step === 1) {
+      return (
+        form.name.trim().length > 1 &&
+        form.mobile.replace(/\D/g, "").length >= 10 &&
+        form.areaId &&
+        form.visitNumber !== "" &&
+        form.visitNumber !== null &&
+        form.bikeRegNo.trim().length >= 3 &&
+        form.bikeModelId &&
+        form.bikeYear &&
+        form.workerId
+      );
     }
+    const q = activeQuestions[step - 2];
+    if (!q) return false;
+    const val = answers[q.id];
+    if (!q.required) return true;
+    if (q.type === "star") return typeof val === "number" && val > 0;
+    return val !== undefined && val !== null && String(val).trim() !== "";
   };
 
   const handleNext = () => {
@@ -862,6 +873,30 @@ export default function FeedbackFlow({
           ? null
           : Number(form.visitNumber);
 
+      // Map answers by question code → legacy columns (for analytics)
+      const legacyMap = {
+        attention: "attention_given",
+        computerDiagnosis: "computer_diagnosis",
+        computerRpmCheck: "computer_rpm_check",
+        rStaff: "rating_staff_behaviour",
+        rService: "rating_service_quality",
+        rExplain: "rating_work_explanation",
+        rFacility: "rating_workshop_facility",
+        rWait: "rating_waiting_time",
+        rOverall: "rating_overall",
+        recommendation: "recommendation",
+        comment: "comment",
+      };
+      const legacy = {};
+      activeQuestions.forEach((q) => {
+        if (q.code && legacyMap[q.code]) {
+          const v = answers[q.id];
+          if (v !== undefined && v !== null && v !== "") {
+            legacy[legacyMap[q.code]] = v;
+          }
+        }
+      });
+
       const { data: resp, error: respErr } = await supabase
         .from("fb_responses")
         .insert({
@@ -874,21 +909,41 @@ export default function FeedbackFlow({
           taken_by_user_id: currentUser.id,
           taken_by_name:
             currentUser.full_name || currentUser.username || "Staff",
-          attention_given: form.attention,
-          computer_diagnosis: form.computerDiagnosis,
-          computer_rpm_check: form.computerRpmCheck,
-          rating_staff_behaviour: form.rStaff,
-          rating_service_quality: form.rService,
-          rating_work_explanation: form.rExplain,
-          rating_workshop_facility: form.rFacility,
-          rating_waiting_time: form.rWait,
-          rating_overall: form.rOverall,
-          recommendation: form.recommendation,
-          comment: form.comment.trim() || null,
+          attention_given: legacy.attention_given ?? null,
+          computer_diagnosis: legacy.computer_diagnosis ?? null,
+          computer_rpm_check: legacy.computer_rpm_check ?? null,
+          rating_staff_behaviour: legacy.rating_staff_behaviour ?? null,
+          rating_service_quality: legacy.rating_service_quality ?? null,
+          rating_work_explanation: legacy.rating_work_explanation ?? null,
+          rating_workshop_facility: legacy.rating_workshop_facility ?? null,
+          rating_waiting_time: legacy.rating_waiting_time ?? null,
+          rating_overall: legacy.rating_overall ?? null,
+          recommendation: legacy.recommendation ?? null,
+          comment: legacy.comment ?? null,
         })
         .select("id")
         .single();
       if (respErr) throw respErr;
+
+      // Save dynamic answers
+      if (activeQuestions.length > 0) {
+        const answerRows = activeQuestions.map((q) => {
+          const v = answers[q.id];
+          return {
+            response_id: resp.id,
+            question_id: q.id,
+            rating_value: q.type === "star" && v ? Number(v) : null,
+            choice_value:
+              q.type !== "star" && v !== undefined && v !== null
+                ? String(v)
+                : null,
+          };
+        });
+        const { error: aErr } = await supabase
+          .from("fb_answers")
+          .insert(answerRows);
+        if (aErr) console.error("[fb_answers insert]", aErr);
+      }
 
       if (form.workerId) {
         const { error: wErr } = await supabase
@@ -906,6 +961,7 @@ export default function FeedbackFlow({
 
       setDraftId(null);
       setForm(emptyForm);
+      setAnswers({});
       setStep(1);
       setDraftLoaded(false);
       setView("thanks");
@@ -918,6 +974,7 @@ export default function FeedbackFlow({
 
   const startNewFeedback = () => {
     setForm(emptyForm);
+    setAnswers({});
     setStep(1);
     setDraftId(null);
     setView("flow");
@@ -926,6 +983,7 @@ export default function FeedbackFlow({
 
   const continueDraft = (d) => {
     setForm({ ...emptyForm, ...(d.form_data || {}) });
+    setAnswers(d.answers || {});
     setStep(d.current_step || 1);
     setDraftId(d.id);
     setView("flow");
@@ -987,7 +1045,9 @@ export default function FeedbackFlow({
                 New Feedback
               </p>
               <p className="text-[13px] text-white/85 mt-1">
-                12 quick questions · ~3 min
+                {questionsLoaded
+                  ? `${TOTAL_STEPS} quick questions · ~3 min`
+                  : "Loading…"}
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-white/[0.18] border border-white/[0.24] flex items-center justify-center">
@@ -1119,141 +1179,59 @@ export default function FeedbackFlow({
           />
         )}
 
-        {step === 2 && (
-          <StepQuestion
-            title="ورکشاپ آنے پر کیا آپ کو فوراً توجہ دی گئی اور آپ سے بائیک کے کام کے بارے میں پوچھا گیا؟"
-            hint="Were you attended to right away?"
-          >
-            <ChoiceButtons
-              value={form.attention}
-              onChange={(v) => setField("attention", v)}
-              options={[
-                { value: "yes", label: "جی ہاں" },
-                { value: "partial", label: "کچھ حد تک" },
-                { value: "no", label: "نہیں" },
-              ]}
-            />
-          </StepQuestion>
-        )}
+        {step >= 2 &&
+          (() => {
+            const q = activeQuestions[step - 2];
+            if (!q) return null;
+            const title = q.text_ur || q.text_en || "";
+            const hint = q.hint_en || q.hint_ur || "";
+            const value = answers[q.id];
 
-        {step === 3 && (
-          <StepQuestion
-            title="کیا کام شروع کرنے سے پہلے بائیک کا مسئلہ کمپیوٹرائزڈ چیکنگ کے ذریعے معلوم کیا گیا؟"
-            hint="Computerised diagnosis before work"
-          >
-            <ChoiceButtons
-              value={form.computerDiagnosis}
-              onChange={(v) => setField("computerDiagnosis", v)}
-              options={[
-                { value: "yes", label: "جی ہاں" },
-                { value: "no", label: "نہیں" },
-              ]}
-            />
-          </StepQuestion>
-        )}
-
-        {step === 4 && (
-          <StepQuestion
-            title="کیا کام مکمل ہونے کے بعد پٹرول کی سیٹنگ اور RPM کمپیوٹرائزڈ طریقے سے چیک کیے گئے؟"
-            hint="Post-service RPM & tuning check"
-          >
-            <ChoiceButtons
-              value={form.computerRpmCheck}
-              onChange={(v) => setField("computerRpmCheck", v)}
-              options={[
-                { value: "yes", label: "جی ہاں" },
-                { value: "no", label: "نہیں" },
-              ]}
-            />
-          </StepQuestion>
-        )}
-
-        {step === 5 && (
-          <StepRating
-            title="آپ ہمارے اسٹاف کے رویے اور برتاؤ کو کتنے اسٹار دیں گے؟"
-            hint="Staff behaviour"
-            value={form.rStaff}
-            onChange={(v) => setField("rStaff", v)}
-          />
-        )}
-        {step === 6 && (
-          <StepRating
-            title="آپ بائیک کے کام اور سروس کے معیار کو کتنے اسٹار دیں گے؟"
-            hint="Service & work quality"
-            value={form.rService}
-            onChange={(v) => setField("rService", v)}
-          />
-        )}
-        {step === 7 && (
-          <StepRating
-            title="کیا آپ کو بائیک کے کام کے بارے میں مناسب طریقے سے سمجھایا گیا؟"
-            hint="Work explanation"
-            value={form.rExplain}
-            onChange={(v) => setField("rExplain", v)}
-          />
-        )}
-        {step === 8 && (
-          <StepRating
-            title="ورکشاپ کی صفائی اور کسٹمر کے بیٹھنے کی سہولت کو کتنے اسٹار دیں گے؟"
-            hint="Workshop facility & cleanliness"
-            value={form.rFacility}
-            onChange={(v) => setField("rFacility", v)}
-          />
-        )}
-        {step === 9 && (
-          <StepRating
-            title="بائیک کا کام مکمل کرنے میں لگنے والے وقت کو کتنے اسٹار دیں گے؟"
-            hint="Waiting time"
-            value={form.rWait}
-            onChange={(v) => setField("rWait", v)}
-          />
-        )}
-        {step === 10 && (
-          <StepRating
-            title="مجموعی طور پر ARAIAN HONDA CENTRE کے بارے میں آپ کیا ریٹنگ دیں گے؟"
-            hint="Overall experience"
-            value={form.rOverall}
-            onChange={(v) => setField("rOverall", v)}
-          />
-        )}
-
-        {step === 11 && (
-          <StepQuestion
-            title="کیا آپ ARAIAN HONDA CENTRE کو دوسروں کو تجویز کریں گے؟"
-            hint="Would you recommend us?"
-          >
-            <ChoiceButtons
-              value={form.recommendation}
-              onChange={(v) => setField("recommendation", v)}
-              options={[
-                { value: "must", label: "ضرور" },
-                { value: "maybe", label: "شاید" },
-                { value: "no", label: "نہیں" },
-              ]}
-            />
-          </StepQuestion>
-        )}
-
-        {step === 12 && (
-          <StepQuestion
-            title="رائے، شکایت یا مشورہ"
-            hint="Optional — leave blank if none"
-          >
-            <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[24px] p-5">
-              <textarea
-                value={form.comment}
-                onChange={(e) => setField("comment", e.target.value)}
-                placeholder="مثال: قیمت کا مسئلہ / انتظار کا مسئلہ / کوئی تجویز…"
-                rows={6}
-                maxLength={1000}
-                className="w-full bg-transparent border-0 p-0 text-[17px] leading-relaxed text-white placeholder-white/25 font-medium focus:outline-none resize-none"
-              />
-              <p className="text-[12px] text-white/35 text-right mt-2 tabular-nums">
-                {form.comment.length}/1000
-              </p>
-            </div>
-          </StepQuestion>
-        )}
+            return (
+              <StepQuestion title={title} hint={hint} key={q.id}>
+                {q.type === "star" && (
+                  <StarRatingDisplay
+                    value={typeof value === "number" ? value : 0}
+                    onChange={(v) =>
+                      setAnswers((prev) => ({ ...prev, [q.id]: v }))
+                    }
+                  />
+                )}
+                {q.type === "mcq" && (
+                  <ChoiceButtons
+                    value={value}
+                    onChange={(v) =>
+                      setAnswers((prev) => ({ ...prev, [q.id]: v }))
+                    }
+                    options={(q.options || []).map((o) => ({
+                      value: o.value,
+                      label: o.label,
+                    }))}
+                  />
+                )}
+                {q.type === "text" && (
+                  <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[24px] p-5">
+                    <textarea
+                      value={value || ""}
+                      onChange={(e) =>
+                        setAnswers((prev) => ({
+                          ...prev,
+                          [q.id]: e.target.value,
+                        }))
+                      }
+                      placeholder="Type your answer…"
+                      rows={6}
+                      maxLength={1000}
+                      className="w-full bg-transparent border-0 p-0 text-[17px] leading-relaxed text-white placeholder-white/25 font-medium focus:outline-none resize-none"
+                    />
+                    <p className="text-[12px] text-white/35 text-right mt-2 tabular-nums">
+                      {(value || "").length}/1000
+                    </p>
+                  </div>
+                )}
+              </StepQuestion>
+            );
+          })()}
 
         <div className="flex gap-2.5 pt-1">
           <button
@@ -1494,6 +1472,7 @@ function StepCustomer({
           <GlassSelect
             label="Visit"
             icon={Hash}
+            required
             value={form.visitNumber}
             onChange={(v) => setField("visitNumber", v)}
             options={Array.from({ length: 101 }, (_, i) => ({
