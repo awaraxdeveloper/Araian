@@ -849,8 +849,7 @@ export default function FeedbackFlow({
             name: form.name.trim(),
             mobile: form.mobile.replace(/\D/g, ""),
             area_id: form.areaId || null,
-            area_other_text: form.areaOther.trim() || null,
-            address: form.address.trim() || null,
+            area_other_text: (form.areaOther || "").trim() || null,
           })
           .select("id")
           .single();
