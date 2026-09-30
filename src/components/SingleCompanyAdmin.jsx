@@ -39,6 +39,7 @@ import {
   ArrowLeft,
   ChevronLeft,
   MessageSquare,
+  Star,
 } from "lucide-react";
 import CustomMonthPicker from "./ui/CustomMonthPicker";
 import CustomYearPicker from "./ui/CustomYearPicker";
@@ -48,6 +49,166 @@ import CustomSelect from "./ui/CustomSelect";
 import CustomTimePicker from "./ui/CustomTimePicker";
 import FeedbackFlow from "../feedback/FeedbackFlow";
 import FeedbackAdminDashboard from "../feedback/FeedbackAdminDashboard";
+
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+const formatPKR = (n) =>
+  "Rs. " +
+  Number(n).toLocaleString("en-PK", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const startOfDayLocal = (d) =>
+  new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+const makeDateStrLocal = (y, m, d) =>
+  `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+const computePayroll = ({
+  employee,
+  month,
+  year,
+  totalDays,
+  bulkDays,
+  dailyRecords,
+  isCurrentMonth,
+  isFutureMonth,
+  today,
+  overtimeHours = 0,
+  advanceDeductions = 0,
+}) => {
+  const baseSalary = Number(employee.base_salary) || 0;
+  const dailyRate = round2(baseSalary / totalDays);
+  const hourlyRate = round2(dailyRate / 8);
+  const warnings = [];
+
+  const joining = employee.date_of_joining
+    ? new Date(employee.date_of_joining)
+    : null;
+  const leaving = employee.date_of_leaving
+    ? new Date(employee.date_of_leaving)
+    : null;
+
+  const counts = {
+    full: 0,
+    half: 0,
+    holiday: 0,
+    holidayWorked: 0,
+    absent: 0,
+    pending: 0,
+    notEmployed: 0,
+  };
+
+  const recordMap = {};
+  (dailyRecords || []).forEach((r) => {
+    recordMap[r.date] = r;
+  });
+
+  const today0 = today ? startOfDayLocal(today) : new Date();
+
+  for (let day = 1; day <= totalDays; day++) {
+    const dateStr = makeDateStrLocal(year, month, day);
+    const dateObj = new Date(year, month, day);
+
+    if (joining && dateObj < startOfDayLocal(joining)) {
+      counts.notEmployed++;
+      continue;
+    }
+    if (leaving && dateObj > startOfDayLocal(leaving)) {
+      counts.notEmployed++;
+      continue;
+    }
+
+    const rec = recordMap[dateStr];
+
+    if (!rec) {
+      if (isCurrentMonth && dateObj > today0) {
+        counts.pending++;
+      } else if (isFutureMonth) {
+        counts.pending++;
+      } else {
+        counts.absent++;
+      }
+      continue;
+    }
+
+    const status = String(rec.status || "").toLowerCase();
+    if (status === "full") counts.full++;
+    else if (status === "half") counts.half++;
+    else if (status === "holiday") {
+      if (rec.worked_on_holiday) counts.holidayWorked++;
+      else counts.holiday++;
+    } else if (status === "absent") counts.absent++;
+    else {
+      warnings.push(`Unknown status "${rec.status}" on day ${day}`);
+      // unknown status: exclude entirely, no credit, not counted as absent
+    }
+  }
+
+  const hasDailyRows = (dailyRecords || []).length > 0;
+  const bulkNum =
+    bulkDays === null || bulkDays === undefined || bulkDays === ""
+      ? null
+      : Number(bulkDays);
+
+  let paidDays = 0;
+  let usedBulk = false;
+
+  if (bulkNum !== null && bulkNum > 0) {
+    usedBulk = true;
+    let effective = bulkNum;
+    if (effective > totalDays) {
+      warnings.push(
+        `Bulk days (${bulkNum}) exceeded month (${totalDays}); clamped.`
+      );
+      effective = totalDays;
+    }
+    paidDays = effective;
+  } else if (bulkNum === 0 && hasDailyRows) {
+    warnings.push("Bulk was 0 — daily records used instead.");
+    paidDays = round2(
+      counts.full * 1 +
+        counts.half * 0.5 +
+        counts.holiday * 1 +
+        counts.holidayWorked * 2
+    );
+  } else if (bulkNum === 0) {
+    paidDays = 0;
+  } else {
+    paidDays = round2(
+      counts.full * 1 +
+        counts.half * 0.5 +
+        counts.holiday * 1 +
+        counts.holidayWorked * 2
+    );
+  }
+
+  const basePay = round2(dailyRate * paidDays);
+  const overtimePay = round2(Number(overtimeHours) * hourlyRate * 1.25);
+  const deductions = round2(Number(advanceDeductions));
+  const grossPay = round2(basePay + overtimePay);
+  const netPayable = round2(Math.max(grossPay - deductions, 0));
+  const balance = round2(Math.max(baseSalary - netPayable, 0));
+
+  return {
+    totalDays,
+    dailyRate,
+    hourlyRate,
+    counts,
+    paidDays,
+    basePay,
+    overtimePay,
+    deductions,
+    grossPay,
+    netPayable,
+    balance,
+    provisional: !!isCurrentMonth,
+    warnings,
+    usedBulk,
+    hasDailyRows,
+  };
+};
 
 // Modernized styling tokens with iOS-dark palette
 const inputBase =
@@ -106,6 +267,7 @@ export default function SingleCompanyAdmin({
   // Attendance & Reports
   const [dailyStatus, setDailyStatus] = useState({});
   const [dailyCheckIn, setDailyCheckIn] = useState({});
+  const [dailyHolidayWorked, setDailyHolidayWorked] = useState({});
   const [bulkDays, setBulkDays] = useState({});
   const [bulkReports, setBulkReports] = useState([]);
   const [monthlyReports, setMonthlyReports] = useState([]);
@@ -134,6 +296,7 @@ export default function SingleCompanyAdmin({
   const [calcFull, setCalcFull] = useState(0);
   const [calcHalf, setCalcHalf] = useState(0);
   const [calcHoliday, setCalcHoliday] = useState(0);
+  const [calcHolidayWorked, setCalcHolidayWorked] = useState(0);
   const [calcOvertimeHours, setCalcOvertimeHours] = useState(0);
   const [calcAdvanceDeductions, setCalcAdvanceDeductions] = useState(0);
   const [calcResult, setCalcResult] = useState(null);
@@ -146,6 +309,7 @@ export default function SingleCompanyAdmin({
   const [empMobile, setEmpMobile] = useState("");
   const [empEmergencyContact, setEmpEmergencyContact] = useState("");
   const [empDateOfJoining, setEmpDateOfJoining] = useState("");
+  const [empDateOfLeaving, setEmpDateOfLeaving] = useState("");
   const [empReference, setEmpReference] = useState("");
   const [empStartingSalary, setEmpStartingSalary] = useState("");
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -361,6 +525,7 @@ export default function SingleCompanyAdmin({
     setEmpMobile("");
     setEmpEmergencyContact("");
     setEmpDateOfJoining("");
+    setEmpDateOfLeaving("");
     setEmpReference("");
     setEmpStartingSalary("");
   };
@@ -376,6 +541,7 @@ export default function SingleCompanyAdmin({
     setEmpMobile("");
     setEmpEmergencyContact("");
     setEmpDateOfJoining("");
+    setEmpDateOfLeaving("");
     setEmpReference("");
     setEmpStartingSalary("");
     setEmployeeModalOpen(true);
@@ -392,6 +558,7 @@ export default function SingleCompanyAdmin({
     setEmpMobile(emp.mobile || "");
     setEmpEmergencyContact(emp.emergency_contact || "");
     setEmpDateOfJoining(emp.date_of_joining || "");
+    setEmpDateOfLeaving(emp.date_of_leaving || "");
     setEmpReference(emp.reference || "");
     setEmpStartingSalary(emp.starting_salary || "");
     setEmployeeModalOpen(true);
@@ -432,6 +599,7 @@ export default function SingleCompanyAdmin({
         mobile: empMobile || null,
         emergency_contact: empEmergencyContact || null,
         date_of_joining: empDateOfJoining || null,
+        date_of_leaving: empDateOfLeaving || null,
         reference: empReference.trim() || null,
         starting_salary: empStartingSalary ? Number(empStartingSalary) : null,
       };
@@ -523,7 +691,9 @@ export default function SingleCompanyAdmin({
       const empIds = employees.map((e) => e.id);
       const { data, error } = await supabase
         .from("attendance")
-        .select("id, employee_id, date, status, check_in_time")
+        .select(
+          "id, employee_id, date, status, check_in_time, worked_on_holiday"
+        )
         .in("employee_id", empIds)
         .eq("company_id", companyId)
         .order("date", { ascending: false });
@@ -565,7 +735,7 @@ export default function SingleCompanyAdmin({
     try {
       const { data, error } = await supabase
         .from("attendance")
-        .select("employee_id, status, check_in_time")
+        .select("employee_id, status, check_in_time, worked_on_holiday")
         .in("employee_id", empIds)
         .eq("date", dateStr)
         .eq("company_id", companyId);
@@ -574,14 +744,17 @@ export default function SingleCompanyAdmin({
 
       const statusMap = {};
       const checkInMap = {};
+      const holidayWorkedMap = {};
       if (data) {
         data.forEach((item) => {
           statusMap[item.employee_id] = item.status;
           checkInMap[item.employee_id] = item.check_in_time || "";
+          holidayWorkedMap[item.employee_id] = !!item.worked_on_holiday;
         });
       }
       setDailyStatus(statusMap);
       setDailyCheckIn(checkInMap);
+      setDailyHolidayWorked(holidayWorkedMap);
       setIsLocked(false);
     } catch (err) {
       triggerToast(`Failed to load attendance: ${err.message}`, "error");
@@ -603,6 +776,9 @@ export default function SingleCompanyAdmin({
   const handleStatusChange = (empId, status) => {
     if (isLocked) return;
     setDailyStatus((prev) => ({ ...prev, [empId]: status }));
+    if (status !== "holiday") {
+      setDailyHolidayWorked((prev) => ({ ...prev, [empId]: false }));
+    }
   };
 
   const saveDailyAttendance = async () => {
@@ -633,6 +809,8 @@ export default function SingleCompanyAdmin({
       const promises = employees.map(async (emp) => {
         const status = dailyStatus[emp.id] || "absent";
         const checkIn = dailyCheckIn[emp.id] || null;
+        const woh =
+          status === "holiday" && dailyHolidayWorked[emp.id] ? true : false;
 
         const { data: existing, error: findError } = await supabase
           .from("attendance")
@@ -647,7 +825,11 @@ export default function SingleCompanyAdmin({
         if (existing) {
           const { error } = await supabase
             .from("attendance")
-            .update({ status, check_in_time: checkIn })
+            .update({
+              status,
+              check_in_time: checkIn,
+              worked_on_holiday: woh,
+            })
             .eq("id", existing.id)
             .eq("company_id", companyId);
           if (error) throw error;
@@ -657,6 +839,7 @@ export default function SingleCompanyAdmin({
             date: dateStr,
             status,
             check_in_time: checkIn,
+            worked_on_holiday: woh,
             company_id: companyId,
           });
           if (error) throw error;
@@ -749,23 +932,54 @@ export default function SingleCompanyAdmin({
 
   const generateBulkReport = () => {
     if (!isAdmin) return;
+    const now = new Date();
+    const isCurrentMonth =
+      selectedYear === now.getFullYear() && selectedMonth === now.getMonth();
+    const isFutureMonth =
+      selectedYear > now.getFullYear() ||
+      (selectedYear === now.getFullYear() && selectedMonth > now.getMonth());
+    if (isFutureMonth) {
+      triggerToast("Cannot generate report for a future month.", "error");
+      return;
+    }
     const totalDays = daysInMonth(selectedYear, selectedMonth);
+
     const report = employees
       .filter((e) => e.is_active)
       .map((emp) => {
-        const work = Number(bulkDays[emp.id] || 0);
-        const abs = totalDays - work;
-        const daily = Number(emp.base_salary) / totalDays;
-        const pay = Math.min(daily * work, Number(emp.base_salary));
-        const bal = Number(emp.base_salary) - pay;
-        return { ...emp, totalDays, work, abs, daily, pay, bal };
+        const result = computePayroll({
+          employee: emp,
+          month: selectedMonth,
+          year: selectedYear,
+          totalDays,
+          bulkDays: bulkDays[emp.id] ?? null,
+          dailyRecords: [],
+          isCurrentMonth,
+          isFutureMonth,
+          today: now,
+        });
+        return { ...emp, ...result };
       });
+
     setBulkReports(report);
   };
 
   // Monthly Report
   const generateMonthlyReport = async () => {
     if (!isAdmin || employees.length === 0) return;
+
+    const now = new Date();
+    const isCurrentMonth =
+      selectedYear === now.getFullYear() && selectedMonth === now.getMonth();
+    const isFutureMonth =
+      selectedYear > now.getFullYear() ||
+      (selectedYear === now.getFullYear() && selectedMonth > now.getMonth());
+
+    if (isFutureMonth) {
+      triggerToast("Cannot generate report for a future month.", "error");
+      return;
+    }
+
     const totalDays = daysInMonth(selectedYear, selectedMonth);
     const monthYear = makeMonthYearStr(selectedYear, selectedMonth);
 
@@ -780,8 +994,7 @@ export default function SingleCompanyAdmin({
       .eq("company_id", companyId);
 
     const bulkMap = {};
-    if (bulkData)
-      bulkData.forEach((b) => (bulkMap[b.employee_id] = b.working_days));
+    (bulkData || []).forEach((b) => (bulkMap[b.employee_id] = b.working_days));
 
     const startDate = makeDateStr(selectedYear, selectedMonth, 1);
     const endDate = makeDateStr(selectedYear, selectedMonth, totalDays);
@@ -798,69 +1011,42 @@ export default function SingleCompanyAdmin({
       .eq("company_id", companyId);
 
     const dailyMap = {};
-    if (dailyData) {
-      dailyData.forEach((d) => {
-        if (!dailyMap[d.employee_id]) dailyMap[d.employee_id] = [];
-        dailyMap[d.employee_id].push(d);
-      });
-    }
+    (dailyData || []).forEach((d) => {
+      if (!dailyMap[d.employee_id]) dailyMap[d.employee_id] = [];
+      dailyMap[d.employee_id].push(d);
+    });
+
+    const monthStart = new Date(selectedYear, selectedMonth, 1);
+    const monthEnd = new Date(selectedYear, selectedMonth, totalDays);
 
     const report = employees
-      .filter((e) => e.is_active)
+      .filter((emp) => {
+        if (emp.is_active) return true;
+        const hasBulk = bulkMap[emp.id] !== undefined;
+        const hasDaily = (dailyMap[emp.id] || []).length > 0;
+        const joiningIn =
+          emp.date_of_joining &&
+          new Date(emp.date_of_joining) <= monthEnd &&
+          new Date(emp.date_of_joining) >= monthStart;
+        const leavingIn =
+          emp.date_of_leaving &&
+          new Date(emp.date_of_leaving) >= monthStart &&
+          new Date(emp.date_of_leaving) <= monthEnd;
+        return hasBulk || hasDaily || joiningIn || leavingIn;
+      })
       .map((emp) => {
-        if (bulkMap[emp.id] !== undefined) {
-          const work = Number(bulkMap[emp.id]);
-          const abs = totalDays - work;
-          const daily = Number(emp.base_salary) / totalDays;
-          const pay = Math.min(daily * work, Number(emp.base_salary));
-          const bal = Number(emp.base_salary) - pay;
-          return {
-            ...emp,
-            type: "bulk",
-            totalDays,
-            work,
-            abs,
-            daily,
-            pay,
-            bal,
-          };
-        }
-
-        const records = dailyMap[emp.id] || [];
-        let full = 0,
-          half = 0,
-          hol = 0,
-          abs = 0;
-        for (let day = 1; day <= totalDays; day++) {
-          const dateStr = makeDateStr(selectedYear, selectedMonth, day);
-          const rec = records.find((r) => r.date === dateStr);
-          const status = rec ? rec.status : "absent";
-          if (status === "full") full++;
-          else if (status === "half") half++;
-          else if (status === "holiday") hol++;
-          else abs++;
-        }
-        const paidHol = Math.min(hol, 4);
-        const extraHol = Math.max(hol - 4, 0);
-        abs += extraHol;
-        const paidDays = full + half * 0.5 + paidHol;
-        const dailyRate = Number(emp.base_salary) / totalDays;
-        const pay = Math.min(dailyRate * paidDays, Number(emp.base_salary));
-        const bal = Number(emp.base_salary) - pay;
-        return {
-          ...emp,
-          type: "daily",
+        const result = computePayroll({
+          employee: emp,
+          month: selectedMonth,
+          year: selectedYear,
           totalDays,
-          full,
-          half,
-          paidHol,
-          extraHol,
-          abs,
-          paidDays,
-          dailyRate,
-          pay,
-          bal,
-        };
+          bulkDays: bulkMap[emp.id] ?? null,
+          dailyRecords: dailyMap[emp.id] || [],
+          isCurrentMonth,
+          isFutureMonth,
+          today: now,
+        });
+        return { ...emp, ...result };
       });
 
     const sorted = [...report].sort(
@@ -877,29 +1063,47 @@ export default function SingleCompanyAdmin({
       return;
     }
     const totalDays = daysInMonth(calcYear, calcMonth);
-    const dailyRate = sal / totalDays;
-    const hourlyRate = dailyRate / 8;
-    const paidHol = Math.min(calcHoliday, 4);
-    const unpaidExtraHol = Math.max(calcHoliday - 4, 0);
-    const workedDaysCredit = calcFull + calcHalf * 0.5 + paidHol;
-    const basePay = Math.min(dailyRate * workedDaysCredit, sal);
-    const overtimePay = Number(calcOvertimeHours) * hourlyRate * 1.25;
-    const deductions = Number(calcAdvanceDeductions);
-    const netPayable = Math.max(basePay + overtimePay - deductions, 0);
-    const balanceRemaining = Math.max(sal - netPayable, 0);
-    setCalcResult({
+
+    const synthetic = [];
+    let d = 1;
+    for (let i = 0; i < Number(calcFull) && d <= totalDays; i++)
+      synthetic.push({
+        date: makeDateStr(calcYear, calcMonth, d++),
+        status: "full",
+      });
+    for (let i = 0; i < Number(calcHalf) && d <= totalDays; i++)
+      synthetic.push({
+        date: makeDateStr(calcYear, calcMonth, d++),
+        status: "half",
+      });
+    for (let i = 0; i < Number(calcHoliday) && d <= totalDays; i++)
+      synthetic.push({
+        date: makeDateStr(calcYear, calcMonth, d++),
+        status: "holiday",
+        worked_on_holiday: false,
+      });
+    for (let i = 0; i < Number(calcHolidayWorked) && d <= totalDays; i++)
+      synthetic.push({
+        date: makeDateStr(calcYear, calcMonth, d++),
+        status: "holiday",
+        worked_on_holiday: true,
+      });
+
+    const result = computePayroll({
+      employee: { base_salary: sal },
+      month: calcMonth,
+      year: calcYear,
       totalDays,
-      dailyRate,
-      hourlyRate,
-      paidHol,
-      unpaidExtraHol,
-      workedDaysCredit,
-      basePay,
-      overtimePay,
-      deductions,
-      netPayable,
-      balanceRemaining,
+      bulkDays: null,
+      dailyRecords: synthetic,
+      isCurrentMonth: false,
+      isFutureMonth: false,
+      today: new Date(),
+      overtimeHours: Number(calcOvertimeHours) || 0,
+      advanceDeductions: Number(calcAdvanceDeductions) || 0,
     });
+
+    setCalcResult(result);
   };
 
   // Print helpers
@@ -1575,6 +1779,17 @@ export default function SingleCompanyAdmin({
                     />
                   </div>
                   <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
+                      Date of Leaving
+                    </label>
+                    <CustomDatePicker
+                      value={empDateOfLeaving}
+                      onChange={(val) => setEmpDateOfLeaving(val)}
+                      placeholder="Optional"
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
                     <label className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
                       Reference
                     </label>
@@ -2401,6 +2616,7 @@ export default function SingleCompanyAdmin({
                 <div className="space-y-3 w-full">
                   {employees
                     .filter((emp) => {
+                      if (!isAdmin) return emp.is_active;
                       if (emp.is_active) return true;
                       return dailyStatus[emp.id] !== undefined;
                     })
@@ -2448,6 +2664,31 @@ export default function SingleCompanyAdmin({
                                 )
                               )}
                             </div>
+
+                            {currentStatus === "holiday" && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDailyHolidayWorked((prev) => ({
+                                    ...prev,
+                                    [emp.id]: !prev[emp.id],
+                                  }))
+                                }
+                                disabled={isLocked && !managersCanPickDates}
+                                className={`px-3 py-2 rounded-[10px] text-[12px] font-semibold border transition-all flex items-center gap-1.5 ${
+                                  dailyHolidayWorked[emp.id]
+                                    ? "bg-[#FF9F0A]/15 border-[#FF9F0A]/40 text-[#FF9F0A]"
+                                    : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white hover:border-white/[0.14]"
+                                } ${
+                                  isLocked && !managersCanPickDates
+                                    ? "opacity-50 cursor-not-allowed"
+                                    : "cursor-pointer"
+                                }`}
+                              >
+                                <Star className="w-3.5 h-3.5" />
+                                Worked (2×)
+                              </button>
+                            )}
 
                             <CustomTimePicker
                               label="In"
@@ -2600,8 +2841,11 @@ export default function SingleCompanyAdmin({
                                       key={rec.id}
                                       className="hover:bg-white/[0.02] transition-colors"
                                     >
-                                      <td className="p-3 font-mono text-white">
+                                      <td className="p-3 font-mono text-white flex items-center gap-1.5">
                                         {rec.date}
+                                        {rec.worked_on_holiday && (
+                                          <Star className="w-3.5 h-3.5 fill-[#FF9F0A] text-[#FF9F0A]" />
+                                        )}
                                       </td>
                                       <td className="p-3">
                                         <span
@@ -2677,13 +2921,30 @@ export default function SingleCompanyAdmin({
                           type="number"
                           min="0"
                           max={daysInMonth(selectedYear, selectedMonth)}
+                          step="1"
                           value={bulkDays[emp.id] || ""}
-                          onChange={(e) =>
-                            setBulkDays({
-                              ...bulkDays,
-                              [emp.id]: e.target.value,
-                            })
-                          }
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              setBulkDays({ ...bulkDays, [emp.id]: "" });
+                              return;
+                            }
+                            let v = Math.floor(Number(raw));
+                            const max = daysInMonth(
+                              selectedYear,
+                              selectedMonth
+                            );
+                            if (isNaN(v)) v = 0;
+                            if (v < 0) v = 0;
+                            if (v > max) {
+                              v = max;
+                              triggerToast(
+                                `Max ${max} days for this month.`,
+                                "error"
+                              );
+                            }
+                            setBulkDays({ ...bulkDays, [emp.id]: v });
+                          }}
                           placeholder="Working days"
                           className={`${inputBase} p-2.5 text-center w-full sm:w-36 shrink-0`}
                         />
@@ -2806,6 +3067,16 @@ export default function SingleCompanyAdmin({
 
               {monthlyReports.length > 0 && (
                 <div id="monthlyPrintArea" className="space-y-5 w-full">
+                  {monthlyReports.some((r) => r.provisional) && (
+                    <div className="bg-[#FF9F0A]/10 border border-[#FF9F0A]/30 rounded-[14px] p-3.5 flex items-center gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-[#FF9F0A] shrink-0" />
+                      <span className="text-[13px] font-semibold text-[#FF9F0A]">
+                        Provisional — month not complete. Remaining days will be
+                        added once attendance is marked.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                     <div>
                       <h3 className="font-bold text-[18px] sm:text-[16px] text-white">
@@ -2834,15 +3105,20 @@ export default function SingleCompanyAdmin({
                       <table className="w-full text-left text-[13px] text-white/85">
                         <thead className="bg-white/[0.02] uppercase text-[10px] text-white/40 tracking-wider border-b border-white/[0.06]">
                           <tr>
-                            <th className="p-4 w-12">#</th>
-                            <th className="p-4">Employee</th>
-                            <th className="p-4 text-right">Base Salary</th>
-                            <th className="p-4 text-center">
-                              Days (F/H/Hol/Abs)
-                            </th>
-                            <th className="p-4 text-right">Paid Days</th>
-                            <th className="p-4 text-right">Net Payable</th>
-                            <th className="p-4 text-right">Balance</th>
+                            <th className="p-3 w-10">#</th>
+                            <th className="p-3">Employee</th>
+                            <th className="p-3 text-right">Base</th>
+                            <th className="p-3 text-center">F</th>
+                            <th className="p-3 text-center">H</th>
+                            <th className="p-3 text-center">Hol</th>
+                            <th className="p-3 text-center">HolW</th>
+                            <th className="p-3 text-center">Abs</th>
+                            <th className="p-3 text-center">Pend</th>
+                            <th className="p-3 text-center">NE</th>
+                            <th className="p-3 text-right">Paid</th>
+                            <th className="p-3 text-right">Base Pay</th>
+                            <th className="p-3 text-right">Net</th>
+                            <th className="p-3 text-right">Balance</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/[0.04]">
@@ -2851,96 +3127,104 @@ export default function SingleCompanyAdmin({
                               key={r.id}
                               className="hover:bg-white/[0.02] transition-colors"
                             >
-                              <td className="p-4 text-white/40 font-mono text-[12px]">
+                              <td className="p-3 text-white/40 font-mono text-[11px]">
                                 {idx + 1}
                               </td>
-                              <td className="p-4 font-semibold text-white">
-                                {r.name}
-                              </td>
-                              <td className="p-4 text-right font-mono text-white/85">
-                                Rs.{" "}
-                                {Number(r.base_salary).toLocaleString("en-PK", {
-                                  minimumFractionDigits: 2,
-                                })}
-                              </td>
-                              <td className="p-4 text-center">
-                                {r.type === "daily" ? (
-                                  <span className="inline-flex gap-1 text-[12px]">
-                                    <span className="text-[#30D158] font-semibold">
-                                      {r.full}F
-                                    </span>{" "}
-                                    /
-                                    <span className="text-[#FFD60A] font-semibold">
-                                      {r.half}H
-                                    </span>{" "}
-                                    /
-                                    <span className="text-[#0A84FF] font-semibold">
-                                      {r.paidHol}Hol
-                                    </span>{" "}
-                                    /
-                                    <span className="text-[#FF6961] font-semibold">
-                                      {r.abs}A
+                              <td className="p-3 font-semibold text-white">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate">{r.name}</span>
+                                  {r.warnings && r.warnings.length > 0 && (
+                                    <span
+                                      className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#FFD60A]/15 border border-[#FFD60A]/30 text-[#FFD60A] shrink-0"
+                                      title={r.warnings.join("\n")}
+                                    >
+                                      ⚠
                                     </span>
-                                  </span>
-                                ) : (
-                                  <span className="text-[#0A84FF] font-semibold">
-                                    {r.work} Days (Bulk)
-                                  </span>
-                                )}
+                                  )}
+                                  {r.usedBulk && (
+                                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#0A84FF]/15 border border-[#0A84FF]/30 text-[#0A84FF] shrink-0">
+                                      Bulk
+                                    </span>
+                                  )}
+                                </div>
                               </td>
-                              <td className="p-4 text-right font-semibold text-white">
-                                {r.type === "daily" ? r.paidDays : r.work} /{" "}
-                                {r.totalDays}
+                              <td className="p-3 text-right font-mono text-white/85 text-[12px]">
+                                {Number(r.base_salary).toLocaleString()}
                               </td>
-                              <td className="p-4 text-right font-mono font-bold text-[#30D158]">
-                                Rs.{" "}
-                                {r.pay.toLocaleString("en-PK", {
-                                  minimumFractionDigits: 2,
-                                })}
+                              <td className="p-3 text-center text-[#30D158] font-semibold text-[12px]">
+                                {r.counts?.full ?? 0}
                               </td>
-                              <td className="p-4 text-right font-mono font-bold text-[#FFD60A]">
-                                Rs.{" "}
-                                {r.bal.toLocaleString("en-PK", {
-                                  minimumFractionDigits: 2,
-                                })}
+                              <td className="p-3 text-center text-[#FFD60A] font-semibold text-[12px]">
+                                {r.counts?.half ?? 0}
+                              </td>
+                              <td className="p-3 text-center text-[#0A84FF] font-semibold text-[12px]">
+                                {r.counts?.holiday ?? 0}
+                              </td>
+                              <td className="p-3 text-center text-[#FF9F0A] font-semibold text-[12px]">
+                                {r.counts?.holidayWorked ?? 0}
+                              </td>
+                              <td className="p-3 text-center text-[#FF6961] font-semibold text-[12px]">
+                                {r.counts?.absent ?? 0}
+                              </td>
+                              <td className="p-3 text-center text-white/50 font-semibold text-[12px]">
+                                {r.counts?.pending ?? 0}
+                              </td>
+                              <td className="p-3 text-center text-white/40 font-semibold text-[12px]">
+                                {r.counts?.notEmployed ?? 0}
+                              </td>
+                              <td className="p-3 text-right font-semibold text-white text-[12px]">
+                                {r.paidDays} / {r.totalDays}
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold text-white/85 text-[12px]">
+                                {formatPKR(r.basePay)}
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold text-[#30D158] text-[12px]">
+                                {formatPKR(r.netPayable)}
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold text-[#FFD60A] text-[12px]">
+                                {formatPKR(r.balance)}
                               </td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot className="bg-white/[0.02] border-t-2 border-[#7C5CFF]/40">
                           <tr>
-                            <td className="p-4"></td>
-                            <td className="p-4 font-bold text-white uppercase text-[11px] tracking-wider">
-                              Total ({monthlyReports.length} employees)
+                            <td className="p-3"></td>
+                            <td className="p-3 font-bold text-white uppercase text-[11px] tracking-wider">
+                              Total
                             </td>
-                            <td className="p-4 text-right font-mono font-bold text-white/85">
-                              Rs.{" "}
-                              {monthlyReports
-                                .reduce(
-                                  (sum, r) => sum + Number(r.base_salary || 0),
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3 text-right font-mono font-bold text-white/85 text-[12px]">
+                              {formatPKR(
+                                monthlyReports.reduce(
+                                  (s, r) => s + Number(r.basePay || 0),
                                   0
                                 )
-                                .toLocaleString("en-PK", {
-                                  minimumFractionDigits: 2,
-                                })}
+                              )}
                             </td>
-                            <td className="p-4"></td>
-                            <td className="p-4"></td>
-                            <td className="p-4 text-right font-mono font-extrabold text-[#30D158] text-[14px]">
-                              Rs.{" "}
-                              {monthlyReports
-                                .reduce((sum, r) => sum + Number(r.pay || 0), 0)
-                                .toLocaleString("en-PK", {
-                                  minimumFractionDigits: 2,
-                                })}
+                            <td className="p-3 text-right font-mono font-extrabold text-[#30D158] text-[13px]">
+                              {formatPKR(
+                                monthlyReports.reduce(
+                                  (s, r) => s + Number(r.netPayable || 0),
+                                  0
+                                )
+                              )}
                             </td>
-                            <td className="p-4 text-right font-mono font-bold text-[#FFD60A]">
-                              Rs.{" "}
-                              {monthlyReports
-                                .reduce((sum, r) => sum + Number(r.bal || 0), 0)
-                                .toLocaleString("en-PK", {
-                                  minimumFractionDigits: 2,
-                                })}
+                            <td className="p-3 text-right font-mono font-bold text-[#FFD60A] text-[12px]">
+                              {formatPKR(
+                                monthlyReports.reduce(
+                                  (s, r) => s + Number(r.balance || 0),
+                                  0
+                                )
+                              )}
                             </td>
                           </tr>
                         </tfoot>
@@ -3104,24 +3388,30 @@ export default function SingleCompanyAdmin({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full">
                 <CalcInput
-                  label="Full Days Worked"
-                  placeholder="Full Days"
+                  label="Full Days"
+                  placeholder="Full"
                   value={calcFull}
                   onChange={(v) => setCalcFull(Number(v))}
                 />
                 <CalcInput
-                  label="Half Days Worked"
-                  placeholder="Half Days"
+                  label="Half Days"
+                  placeholder="Half"
                   value={calcHalf}
                   onChange={(v) => setCalcHalf(Number(v))}
                 />
                 <CalcInput
-                  label="Holidays"
-                  placeholder="Holidays"
+                  label="Holidays (Rest)"
+                  placeholder="Hol"
                   value={calcHoliday}
                   onChange={(v) => setCalcHoliday(Number(v))}
+                />
+                <CalcInput
+                  label="Holidays Worked"
+                  placeholder="Hol W"
+                  value={calcHolidayWorked}
+                  onChange={(v) => setCalcHolidayWorked(Number(v))}
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
@@ -3151,45 +3441,84 @@ export default function SingleCompanyAdmin({
                   <h4 className="font-bold text-[14px] text-white border-b border-white/[0.06] pb-2">
                     Calculation Results ({months[calcMonth]} {calcYear})
                   </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <CalcResultItem
                       label="Days in Month"
-                      value={`${calcResult.totalDays} Days`}
+                      value={`${calcResult.totalDays}`}
                     />
                     <CalcResultItem
                       label="Daily Rate"
-                      value={`Rs. ${calcResult.dailyRate.toFixed(2)}`}
+                      value={formatPKR(calcResult.dailyRate)}
                       color="#30D158"
                     />
                     <CalcResultItem
-                      label="Worked Days Credit"
-                      value={`${calcResult.workedDaysCredit} Days`}
+                      label="Hourly Rate"
+                      value={formatPKR(calcResult.hourlyRate)}
+                    />
+                    <CalcResultItem
+                      label="Paid Days"
+                      value={`${calcResult.paidDays} / ${calcResult.totalDays}`}
                     />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-white/[0.06] pt-3">
+
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 border-t border-white/[0.06] pt-3 text-[12px]">
                     <CalcResultItem
-                      label="Paid Holidays (Cap 4)"
-                      value={`${calcResult.paidHol} Paid (${calcResult.unpaidExtraHol} Unpaid)`}
+                      label="Full"
+                      value={calcResult.counts.full}
+                      color="#30D158"
+                    />
+                    <CalcResultItem
+                      label="Half"
+                      value={calcResult.counts.half}
+                      color="#FFD60A"
+                    />
+                    <CalcResultItem
+                      label="Holiday"
+                      value={calcResult.counts.holiday}
                       color="#0A84FF"
                     />
                     <CalcResultItem
+                      label="Hol. Worked"
+                      value={calcResult.counts.holidayWorked}
+                      color="#FF9F0A"
+                    />
+                    <CalcResultItem
+                      label="Absent"
+                      value={calcResult.counts.absent}
+                      color="#FF6961"
+                    />
+                    <CalcResultItem
+                      label="Pending"
+                      value={calcResult.counts.pending}
+                      color="rgba(255,255,255,0.4)"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-white/[0.06] pt-3">
+                    <CalcResultItem
+                      label="Base Pay"
+                      value={formatPKR(calcResult.basePay)}
+                      color="#30D158"
+                    />
+                    <CalcResultItem
                       label="Overtime Bonus"
-                      value={`+ Rs. ${calcResult.overtimePay.toFixed(2)}`}
+                      value={`+ ${formatPKR(calcResult.overtimePay)}`}
                       color="#30D158"
                     />
                     <CalcResultItem
                       label="Advance Deductions"
-                      value={`- Rs. ${calcResult.deductions.toFixed(2)}`}
+                      value={`- ${formatPKR(calcResult.deductions)}`}
                       color="#FF6961"
                     />
                   </div>
+
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white/[0.02] p-4 rounded-[12px] border border-white/[0.06] gap-2 mt-2">
                     <div>
                       <span className="text-white/40 block text-[10px] uppercase font-bold">
                         Net Calculated Payable
                       </span>
                       <span className="text-[20px] font-bold font-mono text-[#30D158]">
-                        Rs. {calcResult.netPayable.toFixed(2)}
+                        {formatPKR(calcResult.netPayable)}
                       </span>
                     </div>
                     <div className="sm:text-right">
@@ -3197,7 +3526,7 @@ export default function SingleCompanyAdmin({
                         Remaining Unpaid Balance
                       </span>
                       <span className="text-[18px] font-bold font-mono text-[#FFD60A]">
-                        Rs. {calcResult.balanceRemaining.toFixed(2)}
+                        {formatPKR(calcResult.balance)}
                       </span>
                     </div>
                   </div>
