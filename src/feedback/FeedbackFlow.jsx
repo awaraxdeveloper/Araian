@@ -415,10 +415,22 @@ function IOSMultiPickerSheet({
 // ============================================================
 
 function ChoiceButtons({ options, value, onChange }) {
+  // Ensure every option has a stable, unique value. If an admin left the
+  // value field empty, fall back to the option's index.
+  const normalized = (options || []).map((opt, idx) => ({
+    value:
+      opt.value !== undefined &&
+      opt.value !== null &&
+      String(opt.value).trim() !== ""
+        ? String(opt.value)
+        : `__opt_${idx}`,
+    label: opt.label,
+  }));
+
   return (
     <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] overflow-hidden divide-y divide-white/[0.05]">
-      {options.map((opt) => {
-        const active = value === opt.value;
+      {normalized.map((opt) => {
+        const active = value !== undefined && String(value) === opt.value;
         return (
           <button
             key={opt.value}
@@ -873,7 +885,9 @@ export default function FeedbackFlow({
           ? null
           : Number(form.visitNumber);
 
-      // Map answers by question code → legacy columns (for analytics)
+      // Map answers by question code → legacy columns (for analytics).
+      // ONLY write to numeric columns when the value is actually numeric —
+      // otherwise leave it null. This prevents MCQ text hitting smallint.
       const legacyMap = {
         attention: "attention_given",
         computerDiagnosis: "computer_diagnosis",
@@ -887,13 +901,24 @@ export default function FeedbackFlow({
         recommendation: "recommendation",
         comment: "comment",
       };
+      const numericCodes = new Set([
+        "rStaff",
+        "rService",
+        "rExplain",
+        "rFacility",
+        "rWait",
+        "rOverall",
+      ]);
       const legacy = {};
       activeQuestions.forEach((q) => {
-        if (q.code && legacyMap[q.code]) {
-          const v = answers[q.id];
-          if (v !== undefined && v !== null && v !== "") {
-            legacy[legacyMap[q.code]] = v;
-          }
+        if (!q.code || !legacyMap[q.code]) return;
+        const v = answers[q.id];
+        if (v === undefined || v === null || v === "") return;
+        if (numericCodes.has(q.code)) {
+          const num = Number(v);
+          if (Number.isFinite(num)) legacy[legacyMap[q.code]] = num;
+        } else {
+          legacy[legacyMap[q.code]] = v;
         }
       });
 

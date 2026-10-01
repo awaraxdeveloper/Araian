@@ -276,7 +276,8 @@ export default function SingleCompanyAdmin({
   const [historyRecords, setHistoryRecords] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
-  const [historyDateFilter, setHistoryDateFilter] = useState("");
+  const [historyDateFrom, setHistoryDateFrom] = useState("");
+  const [historyDateTo, setHistoryDateTo] = useState("");
   const [expandedHistoryEmp, setExpandedHistoryEmp] = useState(null);
 
   // Analytics
@@ -712,7 +713,7 @@ export default function SingleCompanyAdmin({
 
   useEffect(() => {
     setExpandedHistoryEmp(null);
-  }, [historySearch, historyDateFilter]);
+  }, [historySearch, historyDateFrom, historyDateTo]);
 
   // Daily Attendance
   const loadDailyAttendance = async () => {
@@ -1146,11 +1147,26 @@ export default function SingleCompanyAdmin({
       now.getDate()
     );
 
-    const baseRecords = historyDateFilter
+    const hasDateFilter = !!(historyDateFrom || historyDateTo);
+    const baseRecords = hasDateFilter
       ? filteredHistory
       : filteredHistory.filter((rec) => rec.date === todayStr);
 
-    const sortedBySalary = [...baseRecords].sort((a, b) => {
+    // Only include records where the employee was active on that record's
+    // date. An employee is considered active on a date if:
+    //   • they are currently active, OR
+    //   • they have a date_of_leaving and the record is on/before it, OR
+    //   • they are inactive but the record is from a past day.
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const eligibleRecords = baseRecords.filter((rec) => {
+      const emp = employees.find((e) => e.id === rec.employee_id);
+      if (!emp) return false;
+      if (emp.is_active) return true;
+      if (emp.date_of_leaving && rec.date <= emp.date_of_leaving) return true;
+      return rec.date < todayISO;
+    });
+
+    const sortedBySalary = [...eligibleRecords].sort((a, b) => {
       const ea = employees.find((e) => e.id === a.employee_id);
       const eb = employees.find((e) => e.id === b.employee_id);
       const sa = Number(ea?.base_salary || 0);
@@ -1253,6 +1269,129 @@ export default function SingleCompanyAdmin({
                 formattedRows.length > 0
                   ? formattedRows
                   : '<tr><td colspan="5" style="text-align:center">No records available</td></tr>'
+              }
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    setTimeout(() => win.print(), 400);
+  };
+
+  const printEmployeeReport = (emp, records) => {
+    if (!emp || !records || records.length === 0) {
+      triggerToast("No records to print for this employee.", "error");
+      return;
+    }
+
+    const sorted = [...records].sort((a, b) =>
+      a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+    );
+
+    const distinctDates = Array.from(new Set(sorted.map((r) => r.date))).sort();
+    let dateLabel;
+    if (distinctDates.length === 1) {
+      dateLabel = `Report Date: ${formatDate(distinctDates[0])}`;
+    } else {
+      dateLabel = `From ${formatDate(distinctDates[0])} to ${formatDate(
+        distinctDates[distinctDates.length - 1]
+      )}`;
+    }
+
+    const fullCount = sorted.filter((r) => r.status === "full").length;
+    const halfCount = sorted.filter((r) => r.status === "half").length;
+    const holidayCount = sorted.filter((r) => r.status === "holiday").length;
+    const holidayWorkedCount = sorted.filter(
+      (r) => r.status === "holiday" && r.worked_on_holiday
+    ).length;
+    const absentCount = sorted.filter((r) => r.status === "absent").length;
+
+    const title = `${companyName} - ${emp.name} - Attendance Report`;
+
+    const formattedRows = sorted
+      .map((rec, idx) => {
+        const star = rec.worked_on_holiday
+          ? ' <span style="color:#c2410c;font-weight:bold">⭐</span>'
+          : "";
+        return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td><strong>${rec.date}</strong></td>
+          <td><span class="badge badge-${rec.status}">${
+          rec.status
+        }</span>${star}</td>
+          <td>${rec.check_in_time || "—"}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const empMetaParts = [];
+    if (emp.cnic) empMetaParts.push(`CNIC: ${emp.cnic}`);
+    if (emp.mobile) empMetaParts.push(emp.mobile);
+    if (emp.date_of_joining)
+      empMetaParts.push(`Joined: ${formatDate(emp.date_of_joining)}`);
+    if (!emp.is_active) empMetaParts.push("Inactive");
+    const empMeta = empMetaParts.join(" · ");
+
+    const win = window.open("", "_blank", "width=950,height=800");
+    win.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #1e293b; }
+            .header { border-bottom: 2px solid #7c5cff; padding-bottom: 12px; margin-bottom: 20px; }
+            .company { font-size: 22px; font-weight: bold; color: #0f172a; }
+            .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
+            .emp-name { font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 10px; }
+            .emp-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+            .date-label { font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 8px; }
+            .summary-box { display: flex; gap: 12px; margin-bottom: 20px; }
+            .card { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; }
+            .card .num { font-size: 18px; font-weight: bold; color: #0f172a; }
+            .card .lbl { font-size: 10px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+            th { background-color: #f1f5f9; font-weight: bold; color: #334155; }
+            .badge { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+            .badge-full { background: #dcfce7; color: #166534; }
+            .badge-half { background: #fef9c3; color: #854d0e; }
+            .badge-holiday { background: #dbeafe; color: #1e40af; }
+            .badge-absent { background: #fee2e2; color: #991b1b; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="company">${companyName}</div>
+            <div class="subtitle">Individual Attendance Report</div>
+            <div class="emp-name">${emp.name}</div>
+            ${empMeta ? `<div class="emp-meta">${empMeta}</div>` : ""}
+            <div class="date-label">${dateLabel}</div>
+          </div>
+          <div class="summary-box">
+            <div class="card"><div class="num">${
+              sorted.length
+            }</div><div class="lbl">Total Logs</div></div>
+            <div class="card"><div class="num" style="color:#166534">${fullCount}</div><div class="lbl">Full</div></div>
+            <div class="card"><div class="num" style="color:#854d0e">${halfCount}</div><div class="lbl">Half</div></div>
+            <div class="card"><div class="num" style="color:#1e40af">${holidayCount}</div><div class="lbl">Holiday</div></div>
+            <div class="card"><div class="num" style="color:#c2410c">${holidayWorkedCount}</div><div class="lbl">Hol. Worked</div></div>
+            <div class="card"><div class="num" style="color:#991b1b">${absentCount}</div><div class="lbl">Absent</div></div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:44px">#</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Check‑in Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                formattedRows ||
+                '<tr><td colspan="4" style="text-align:center">No records available</td></tr>'
               }
             </tbody>
           </table>
@@ -1390,8 +1529,9 @@ export default function SingleCompanyAdmin({
     const empNameMatch = emp
       ? emp.name.toLowerCase().includes(historySearch.toLowerCase())
       : false;
-    const dateMatch = historyDateFilter ? rec.date === historyDateFilter : true;
-    return empNameMatch && dateMatch;
+    const fromMatch = !historyDateFrom || rec.date >= historyDateFrom;
+    const toMatch = !historyDateTo || rec.date <= historyDateTo;
+    return empNameMatch && fromMatch && toMatch;
   });
 
   const groupedHistory = (() => {
@@ -2730,7 +2870,7 @@ export default function SingleCompanyAdmin({
             <div className="space-y-5 w-full">
               <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4 w-full">
                 <div className="flex flex-col sm:flex-row items-end justify-between gap-4">
-                  <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-1.5 block">
                         Search Employee
@@ -2746,14 +2886,18 @@ export default function SingleCompanyAdmin({
                         />
                       </div>
                     </div>
-                    <div>
-                      <CustomDatePicker
-                        label="Filter By Date"
-                        value={historyDateFilter}
-                        onChange={(val) => setHistoryDateFilter(val)}
-                        placeholder="Select date..."
-                      />
-                    </div>
+                    <CustomDatePicker
+                      label="From"
+                      value={historyDateFrom}
+                      onChange={(val) => setHistoryDateFrom(val)}
+                      placeholder="Start date"
+                    />
+                    <CustomDatePicker
+                      label="To"
+                      value={historyDateTo}
+                      onChange={(val) => setHistoryDateTo(val)}
+                      placeholder="End date"
+                    />
                   </div>
                   <div className="w-full sm:w-auto">
                     <button
@@ -2789,14 +2933,14 @@ export default function SingleCompanyAdmin({
                         key={empId}
                         className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] overflow-hidden w-full hover:border-white/[0.10] transition-colors"
                       >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedHistoryEmp(isOpen ? null : empId)
-                          }
-                          className="w-full flex items-center justify-between gap-3 p-4 hover:bg-white/[0.02] transition-colors text-left cursor-pointer"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-full flex items-center justify-between gap-3 p-4 hover:bg-white/[0.02] transition-colors">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedHistoryEmp(isOpen ? null : empId)
+                            }
+                            className="flex-1 flex items-center gap-3 min-w-0 text-left cursor-pointer"
+                          >
                             <ChevronDown
                               className={`w-4 h-4 text-white/50 shrink-0 transition-transform duration-200 ${
                                 isOpen ? "rotate-0" : "-rotate-90"
@@ -2817,12 +2961,24 @@ export default function SingleCompanyAdmin({
                                   : "—"}
                               </p>
                             </div>
+                          </button>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-white/[0.03] border border-white/[0.08] text-white/70 whitespace-nowrap">
+                              {records.length}{" "}
+                              {records.length === 1 ? "record" : "records"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => printEmployeeReport(emp, records)}
+                              className="p-2 rounded-lg bg-[#7C5CFF]/10 hover:bg-[#7C5CFF]/20 border border-[#7C5CFF]/25 text-[#A390FF] transition-colors cursor-pointer"
+                              title={`Print ${empName}'s report`}
+                              aria-label={`Print ${empName}'s report`}
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
                           </div>
-                          <span className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-white/[0.03] border border-white/[0.08] text-white/70">
-                            {records.length}{" "}
-                            {records.length === 1 ? "record" : "records"}
-                          </span>
-                        </button>
+                        </div>
 
                         {isOpen && (
                           <div className="border-t border-white/[0.06] bg-white/[0.01]">
