@@ -178,12 +178,18 @@ export default function FeedbackQuestionsTab({ companyId, showToast }) {
         type: editing.type,
         options:
           editing.type === "mcq"
-            ? editing.options
-                .filter((o) => o.label?.trim() && o.value?.trim())
-                .map((o) => ({
-                  value: o.value.trim(),
-                  label: o.label.trim(),
-                }))
+            ? (() => {
+                const seen = new Set();
+                return editing.options
+                  .filter((o) => o.label?.trim())
+                  .map((o, idx) => {
+                    let val = (o.value || "").trim();
+                    if (!val) val = `__opt_${idx}`;
+                    if (seen.has(val)) val = `${val}__${idx}`;
+                    seen.add(val);
+                    return { value: val, label: o.label.trim() };
+                  });
+              })()
             : null,
         sort_order: editing.sort_order,
         active: editing.active,

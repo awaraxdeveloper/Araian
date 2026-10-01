@@ -52,6 +52,25 @@ const emptyForm = {
 const btnPrimary =
   "bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] hover:from-[#9B7EFF] hover:to-[#7C5CFF] text-white shadow-[0_10px_28px_-10px_rgba(124,92,255,0.6)]";
 
+// Only these literal values are valid for the legacy check-constrained columns.
+const LEGACY_ATTENTION = new Set(["yes", "no", "partial"]);
+const LEGACY_RECOMMENDATION = new Set(["must", "maybe", "no"]);
+
+const sanitizeAttention = (v) => {
+  if (v === undefined || v === null) return null;
+  const s = String(v).toLowerCase().trim();
+  return LEGACY_ATTENTION.has(s) ? s : null;
+};
+const sanitizeRecommendation = (v) => {
+  if (v === undefined || v === null) return null;
+  const s = String(v).toLowerCase().trim();
+  return LEGACY_RECOMMENDATION.has(s) ? s : null;
+};
+const sanitizeRating = (v) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
+};
+
 function relTime(iso) {
   if (!iso) return "";
   const diff = Date.now() - new Date(iso).getTime();
@@ -415,22 +434,28 @@ function IOSMultiPickerSheet({
 // ============================================================
 
 function ChoiceButtons({ options, value, onChange }) {
-  // Ensure every option has a stable, unique value. If an admin left the
-  // value field empty, fall back to the option's index.
-  const normalized = (options || []).map((opt, idx) => ({
-    value:
+  // Guarantee every rendered option has a stable, unique value so two
+  // options can never both appear selected.
+  const seen = new Set();
+  const normalized = (options || []).map((opt, idx) => {
+    let v =
       opt.value !== undefined &&
       opt.value !== null &&
       String(opt.value).trim() !== ""
         ? String(opt.value)
-        : `__opt_${idx}`,
-    label: opt.label,
-  }));
+        : `__opt_${idx}`;
+    if (seen.has(v)) v = `${v}__${idx}`;
+    seen.add(v);
+    return { value: v, label: opt.label ?? "" };
+  });
+
+  const activeValue =
+    value === undefined || value === null ? "" : String(value);
 
   return (
     <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] overflow-hidden divide-y divide-white/[0.05]">
       {normalized.map((opt) => {
-        const active = value !== undefined && String(value) === opt.value;
+        const active = activeValue === opt.value;
         return (
           <button
             key={opt.value}
@@ -934,16 +959,20 @@ export default function FeedbackFlow({
           taken_by_user_id: currentUser.id,
           taken_by_name:
             currentUser.full_name || currentUser.username || "Staff",
-          attention_given: legacy.attention_given ?? null,
-          computer_diagnosis: legacy.computer_diagnosis ?? null,
-          computer_rpm_check: legacy.computer_rpm_check ?? null,
-          rating_staff_behaviour: legacy.rating_staff_behaviour ?? null,
-          rating_service_quality: legacy.rating_service_quality ?? null,
-          rating_work_explanation: legacy.rating_work_explanation ?? null,
-          rating_workshop_facility: legacy.rating_workshop_facility ?? null,
-          rating_waiting_time: legacy.rating_waiting_time ?? null,
-          rating_overall: legacy.rating_overall ?? null,
-          recommendation: legacy.recommendation ?? null,
+          attention_given: sanitizeAttention(legacy.attention_given),
+          computer_diagnosis: sanitizeAttention(legacy.computer_diagnosis),
+          computer_rpm_check: sanitizeAttention(legacy.computer_rpm_check),
+          rating_staff_behaviour: sanitizeRating(legacy.rating_staff_behaviour),
+          rating_service_quality: sanitizeRating(legacy.rating_service_quality),
+          rating_work_explanation: sanitizeRating(
+            legacy.rating_work_explanation
+          ),
+          rating_workshop_facility: sanitizeRating(
+            legacy.rating_workshop_facility
+          ),
+          rating_waiting_time: sanitizeRating(legacy.rating_waiting_time),
+          rating_overall: sanitizeRating(legacy.rating_overall),
+          recommendation: sanitizeRecommendation(legacy.recommendation),
           comment: legacy.comment ?? null,
         })
         .select("id")
