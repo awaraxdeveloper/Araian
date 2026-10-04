@@ -1152,11 +1152,7 @@ export default function SingleCompanyAdmin({
       ? filteredHistory
       : filteredHistory.filter((rec) => rec.date === todayStr);
 
-    // Only include records where the employee was active on that record's
-    // date. An employee is considered active on a date if:
-    //   • they are currently active, OR
-    //   • they have a date_of_leaving and the record is on/before it, OR
-    //   • they are inactive but the record is from a past day.
+    // Eligible records: exclude inactive employees outside their employment window
     const todayISO = new Date().toISOString().slice(0, 10);
     const eligibleRecords = baseRecords.filter((rec) => {
       const emp = employees.find((e) => e.id === rec.employee_id);
@@ -1166,57 +1162,108 @@ export default function SingleCompanyAdmin({
       return rec.date < todayISO;
     });
 
-    const sortedBySalary = [...eligibleRecords].sort((a, b) => {
-      const ea = employees.find((e) => e.id === a.employee_id);
-      const eb = employees.find((e) => e.id === b.employee_id);
-      const sa = Number(ea?.base_salary || 0);
-      const sb = Number(eb?.base_salary || 0);
-      if (sb !== sa) return sb - sa;
-      return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+    // Group by employee → one row per employee
+    const byEmp = new Map();
+    eligibleRecords.forEach((rec) => {
+      if (!byEmp.has(rec.employee_id)) {
+        const emp = employees.find((e) => e.id === rec.employee_id);
+        byEmp.set(rec.employee_id, {
+          emp,
+          full: 0,
+          half: 0,
+          holiday: 0,
+          holidayWorked: 0,
+          absent: 0,
+          total: 0,
+        });
+      }
+      const e = byEmp.get(rec.employee_id);
+      e.total++;
+      const s = rec.status;
+      if (s === "full") e.full++;
+      else if (s === "half") e.half++;
+      else if (s === "holiday") {
+        if (rec.worked_on_holiday) e.holidayWorked++;
+        else e.holiday++;
+      } else if (s === "absent") e.absent++;
     });
 
-    const distinctDates = Array.from(
-      new Set(sortedBySalary.map((r) => r.date))
+    const rows = Array.from(byEmp.values()).sort(
+      (a, b) =>
+        Number(b.emp?.base_salary || 0) - Number(a.emp?.base_salary || 0)
+    );
+
+    // Date label
+    const allDates = Array.from(
+      new Set(eligibleRecords.map((r) => r.date))
     ).sort();
     let dateLabel;
-    if (distinctDates.length === 0) {
+    if (allDates.length === 0) {
       dateLabel = `Report Date: ${formatDate(todayStr)}`;
-    } else if (distinctDates.length === 1) {
-      dateLabel = `Report Date: ${formatDate(distinctDates[0])}`;
+    } else if (allDates.length === 1) {
+      dateLabel = `Report Date: ${formatDate(allDates[0])}`;
     } else {
-      dateLabel = `From ${formatDate(distinctDates[0])} to ${formatDate(
-        distinctDates[distinctDates.length - 1]
+      dateLabel = `From ${formatDate(allDates[0])} to ${formatDate(
+        allDates[allDates.length - 1]
       )}`;
     }
 
-    const title = `${companyName} - Daily Attendance Report`;
+    const totals = rows.reduce(
+      (acc, r) => ({
+        full: acc.full + r.full,
+        half: acc.half + r.half,
+        holiday: acc.holiday + r.holiday,
+        holidayWorked: acc.holidayWorked + r.holidayWorked,
+        absent: acc.absent + r.absent,
+        total: acc.total + r.total,
+      }),
+      { full: 0, half: 0, holiday: 0, holidayWorked: 0, absent: 0, total: 0 }
+    );
 
-    const formattedRows = sortedBySalary
-      .map((rec, idx) => {
-        const emp = employees.find((e) => e.id === rec.employee_id);
-        return `
+    const rowsHtml = rows
+      .map(
+        (r, idx) => `
         <tr>
           <td>${idx + 1}</td>
-          <td><strong>${rec.date}</strong></td>
-          <td>${emp ? emp.name : "Unknown Employee"}</td>
-          <td><span class="badge badge-${rec.status}">${rec.status}</span></td>
-          <td>${rec.check_in_time || "—"}</td>
-        </tr>
-      `;
-      })
+          <td><strong>${r.emp?.name || "Unknown"}</strong>${
+          r.emp?.cnic
+            ? `<br><span style="color:#94a3b8;font-size:10px;font-family:monospace">CNIC: ${r.emp.cnic}</span>`
+            : ""
+        }</td>
+          <td style="text-align:center;color:#166534;font-weight:bold">${
+            r.full
+          }</td>
+          <td style="text-align:center;color:#854d0e;font-weight:bold">${
+            r.half
+          }</td>
+          <td style="text-align:center;color:#1e40af;font-weight:bold">${
+            r.holiday
+          }</td>
+          <td style="text-align:center;color:#c2410c;font-weight:bold">${
+            r.holidayWorked
+          }</td>
+          <td style="text-align:center;color:#991b1b;font-weight:bold">${
+            r.absent
+          }</td>
+          <td style="text-align:center;font-weight:bold">${r.total}</td>
+        </tr>`
+      )
       .join("");
 
-    const totalRecords = sortedBySalary.length;
-    const fullCount = sortedBySalary.filter((r) => r.status === "full").length;
-    const halfCount = sortedBySalary.filter((r) => r.status === "half").length;
-    const holidayCount = sortedBySalary.filter(
-      (r) => r.status === "holiday"
-    ).length;
-    const absentCount = sortedBySalary.filter(
-      (r) => r.status === "absent"
-    ).length;
+    const totalsHtml = `
+      <tr style="background:#f1f5f9">
+        <td colspan="2" style="font-weight:bold;text-align:right">Total</td>
+        <td style="text-align:center;font-weight:bold;color:#166534">${totals.full}</td>
+        <td style="text-align:center;font-weight:bold;color:#854d0e">${totals.half}</td>
+        <td style="text-align:center;font-weight:bold;color:#1e40af">${totals.holiday}</td>
+        <td style="text-align:center;font-weight:bold;color:#c2410c">${totals.holidayWorked}</td>
+        <td style="text-align:center;font-weight:bold;color:#991b1b">${totals.absent}</td>
+        <td style="text-align:center;font-weight:bold">${totals.total}</td>
+      </tr>`;
 
-    const win = window.open("", "_blank", "width=950,height=800");
+    const title = `${companyName} - Attendance Summary Report`;
+
+    const win = window.open("", "_blank", "width=1100,height=800");
     win.document.write(`
       <html>
         <head>
@@ -1227,51 +1274,70 @@ export default function SingleCompanyAdmin({
             .company { font-size: 22px; font-weight: bold; color: #0f172a; }
             .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
             .date-label { font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 8px; }
-            .summary-box { display: flex; gap: 12px; margin-bottom: 20px; }
-            .card { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; }
+            .summary-box { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+            .card { flex: 1; min-width: 90px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px; text-align: center; }
             .card .num { font-size: 18px; font-weight: bold; color: #0f172a; }
-            .card .lbl { font-size: 10px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
+            .card .lbl { font-size: 9px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
             table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
-            th { background-color: #f1f5f9; font-weight: bold; color: #334155; }
-            .badge { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
-            .badge-full { background: #dcfce7; color: #166534; }
-            .badge-half { background: #fef9c3; color: #854d0e; }
-            .badge-holiday { background: #dbeafe; color: #1e40af; }
-            .badge-absent { background: #fee2e2; color: #991b1b; }
+            th, td { border: 1px solid #cbd5e1; padding: 7px 10px; text-align: left; }
+            th { background-color: #f1f5f9; font-weight: bold; color: #334155; font-size: 11px; text-transform: uppercase; }
+            .footer { margin-top: 24px; font-size: 10px; color: #6b7280; text-align: right; }
           </style>
         </head>
         <body>
           <div class="header">
             <div class="company">${companyName}</div>
-            <div class="subtitle">Daily Attendance Report</div>
+            <div class="subtitle">Attendance Summary Report</div>
             <div class="date-label">${dateLabel}</div>
           </div>
+
           <div class="summary-box">
-            <div class="card"><div class="num">${totalRecords}</div><div class="lbl">Total Logs</div></div>
-            <div class="card"><div class="num" style="color:#166534">${fullCount}</div><div class="lbl">Full Days</div></div>
-            <div class="card"><div class="num" style="color:#854d0e">${halfCount}</div><div class="lbl">Half Days</div></div>
-            <div class="card"><div class="num" style="color:#1e40af">${holidayCount}</div><div class="lbl">Holidays</div></div>
-            <div class="card"><div class="num" style="color:#991b1b">${absentCount}</div><div class="lbl">Absents</div></div>
+            <div class="card"><div class="num">${
+              rows.length
+            }</div><div class="lbl">Employees</div></div>
+            <div class="card"><div class="num" style="color:#166534">${
+              totals.full
+            }</div><div class="lbl">Full</div></div>
+            <div class="card"><div class="num" style="color:#854d0e">${
+              totals.half
+            }</div><div class="lbl">Half</div></div>
+            <div class="card"><div class="num" style="color:#1e40af">${
+              totals.holiday
+            }</div><div class="lbl">Holiday</div></div>
+            <div class="card"><div class="num" style="color:#c2410c">${
+              totals.holidayWorked
+            }</div><div class="lbl">Hol. Worked</div></div>
+            <div class="card"><div class="num" style="color:#991b1b">${
+              totals.absent
+            }</div><div class="lbl">Absent</div></div>
+            <div class="card"><div class="num">${
+              totals.total
+            }</div><div class="lbl">Total Logs</div></div>
           </div>
+
           <table>
             <thead>
               <tr>
-                <th style="width:44px">#</th>
-                <th>Date</th>
-                <th>Employee Name</th>
-                <th>Attendance Status</th>
-                <th>Check‑in Time</th>
+                <th style="width:40px">#</th>
+                <th>Employee</th>
+                <th style="width:60px;text-align:center">Full</th>
+                <th style="width:60px;text-align:center">Half</th>
+                <th style="width:70px;text-align:center">Holiday</th>
+                <th style="width:90px;text-align:center">Hol. Worked</th>
+                <th style="width:70px;text-align:center">Absent</th>
+                <th style="width:60px;text-align:center">Total</th>
               </tr>
             </thead>
             <tbody>
               ${
-                formattedRows.length > 0
-                  ? formattedRows
-                  : '<tr><td colspan="5" style="text-align:center">No records available</td></tr>'
+                rowsHtml
+                  ? rowsHtml + totalsHtml
+                  : '<tr><td colspan="8" style="text-align:center">No records available</td></tr>'
               }
             </tbody>
           </table>
+
+          <div class="footer">Generated ${new Date().toLocaleString()}</div>
         </body>
       </html>
     `);

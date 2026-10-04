@@ -126,6 +126,8 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
   const [bikeYears, setBikeYears] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const [questionsList, setQuestionsList] = useState([]);
+  const [answersData, setAnswersData] = useState([]);
   const [settingsTab, setSettingsTab] = useState("areas");
   const [newArea, setNewArea] = useState("");
   const [newBike, setNewBike] = useState("");
@@ -223,6 +225,12 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
   useEffect(() => {
     if (!companyId) return;
     loadDropdowns();
+    supabase
+      .from("fb_questions")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("sort_order", { ascending: true })
+      .then(({ data }) => setQuestionsList(data || []));
   }, [companyId]);
 
   useEffect(() => {
@@ -230,6 +238,19 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
     loadResponses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, range, customFrom, customTo]);
+
+  useEffect(() => {
+    if (!companyId || responses.length === 0) {
+      setAnswersData([]);
+      return;
+    }
+    const ids = responses.map((r) => r.id);
+    supabase
+      .from("fb_answers")
+      .select("*")
+      .in("response_id", ids)
+      .then(({ data }) => setAnswersData(data || []));
+  }, [responses, companyId]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -389,6 +410,76 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
       }))
       .sort((a, b) => b.total - a.total);
   }, [filteredResponses]);
+
+  const ratingBreakdown = useMemo(() => {
+    const byQ = {};
+    answersData.forEach((a) => {
+      if (!byQ[a.question_id]) byQ[a.question_id] = [];
+      byQ[a.question_id].push(a);
+    });
+
+    const legacyStarByCode = {
+      rStaff: metrics.ratings.staff,
+      rService: metrics.ratings.service,
+      rExplain: metrics.ratings.explain,
+      rFacility: metrics.ratings.facility,
+      rWait: metrics.ratings.wait,
+      rOverall: metrics.ratings.overall,
+    };
+
+    return questionsList
+      .filter((q) => q.type === "star" || q.type === "mcq")
+      .map((q) => {
+        const label = q.text_en || q.text_ur || "(untitled)";
+        const answers = byQ[q.id] || [];
+
+        if (q.type === "star") {
+          const ratings = answers
+            .map((a) => a.rating_value)
+            .filter((v) => typeof v === "number" && v > 0);
+          let avg;
+          if (ratings.length > 0) {
+            avg = ratings.reduce((s, v) => s + v, 0) / ratings.length;
+          } else if (q.code && legacyStarByCode[q.code] !== undefined) {
+            avg = legacyStarByCode[q.code];
+          } else {
+            avg = 0;
+          }
+          return {
+            id: q.id,
+            label,
+            type: "star",
+            pct: (avg / 5) * 100,
+            count: ratings.length,
+          };
+        }
+
+        // MCQ — position-based scoring
+        const options = q.options || [];
+        const N = options.length;
+        if (N === 0) {
+          return { id: q.id, label, type: "mcq", pct: 0, count: 0, N };
+        }
+        const scores = answers
+          .map((a) => {
+            const idx = options.findIndex((o) => o.value === a.choice_value);
+            if (idx === -1) return null;
+            return ((N - idx) / N) * 100;
+          })
+          .filter((v) => v !== null);
+        const avgPct = scores.length
+          ? scores.reduce((s, v) => s + v, 0) / scores.length
+          : 0;
+        return {
+          id: q.id,
+          label,
+          type: "mcq",
+          pct: avgPct,
+          count: scores.length,
+          N,
+        };
+      });
+  }, [questionsList, answersData, metrics.ratings]);
 
   const attentionList = useMemo(
     () =>
@@ -1021,6 +1112,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
       {!loading && subTab === "overview" && (
         <OverviewView
           metrics={metrics}
+          ratingBreakdown={ratingBreakdown}
           responses={filteredResponses}
           areaMap={areaMap}
           bikeModelMap={bikeModelMap}
@@ -1209,22 +1301,33 @@ function KpiCard({ label, value, sub, icon: Icon, accent = "violet" }) {
   );
 }
 
-function RatingBar({ label, value }) {
-  const pct = (value / 5) * 100;
+function RatingBar({ label, pct, badge }) {
+  const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+  const hasData = clamped > 0;
   return (
     <div className="space-y-2">
-      <div className="flex justify-between items-center">
-        <span className="text-[16px] sm:text-[14px] font-semibold text-white/85">
+      <div className="flex justify-between items-start gap-3">
+        <span
+          className="text-[15px] sm:text-[14px] font-semibold text-white/85 leading-snug truncate flex-1"
+          title={label}
+        >
           {label}
         </span>
-        <span className="font-mono font-bold text-[#FFD60A] tabular-nums text-[16px] sm:text-[14px]">
-          {value > 0 ? value.toFixed(2) : "—"}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {badge && (
+            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-white/50">
+              {badge}
+            </span>
+          )}
+          <span className="font-mono font-bold text-[#FFD60A] tabular-nums text-[15px] sm:text-[14px] min-w-[52px] text-right">
+            {hasData ? `${clamped.toFixed(1)}%` : "—"}
+          </span>
+        </div>
       </div>
       <div className="w-full h-2.5 bg-white/[0.02] rounded-full overflow-hidden border border-white/[0.06]">
         <div
           className="h-full bg-gradient-to-r from-[#FFE03A] to-[#FFD60A] transition-all duration-500"
-          style={{ width: `${pct}%` }}
+          style={{ width: `${clamped}%` }}
         />
       </div>
     </div>
@@ -1233,6 +1336,7 @@ function RatingBar({ label, value }) {
 
 function OverviewView({
   metrics,
+  ratingBreakdown,
   responses,
   areaMap,
   bikeModelMap,
@@ -1277,26 +1381,22 @@ function OverviewView({
             <BarChart3 className="w-5 h-5 sm:w-4 sm:h-4 text-[#A390FF]" />
             Rating Breakdown
           </h4>
-          <div className="space-y-4">
-            <RatingBar label="Staff Behaviour" value={metrics.ratings.staff} />
-            <RatingBar
-              label="Service Quality"
-              value={metrics.ratings.service}
-            />
-            <RatingBar
-              label="Work Explanation"
-              value={metrics.ratings.explain}
-            />
-            <RatingBar
-              label="Workshop Facility"
-              value={metrics.ratings.facility}
-            />
-            <RatingBar label="Waiting Time" value={metrics.ratings.wait} />
-            <RatingBar
-              label="Overall Experience"
-              value={metrics.ratings.overall}
-            />
-          </div>
+          {ratingBreakdown.length === 0 ? (
+            <p className="text-[14px] text-white/50">
+              No rating or MCQ questions configured yet.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {ratingBreakdown.map((r) => (
+                <RatingBar
+                  key={r.id}
+                  label={r.label}
+                  pct={r.pct}
+                  badge={r.type === "mcq" ? `MCQ · ${r.N}` : "Star"}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="bg-[#1C1C1E] border border-white/[0.06] p-5 sm:p-6 rounded-[20px] space-y-4">
