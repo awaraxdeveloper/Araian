@@ -39,7 +39,6 @@ import {
   ArrowLeft,
   ChevronLeft,
   MessageSquare,
-  Star,
 } from "lucide-react";
 import CustomMonthPicker from "./ui/CustomMonthPicker";
 import CustomYearPicker from "./ui/CustomYearPicker";
@@ -94,7 +93,6 @@ const computePayroll = ({
     full: 0,
     half: 0,
     holiday: 0,
-    holidayWorked: 0,
     absent: 0,
     pending: 0,
     notEmployed: 0,
@@ -136,13 +134,10 @@ const computePayroll = ({
     const status = String(rec.status || "").toLowerCase();
     if (status === "full") counts.full++;
     else if (status === "half") counts.half++;
-    else if (status === "holiday") {
-      if (rec.worked_on_holiday) counts.holidayWorked++;
-      else counts.holiday++;
-    } else if (status === "absent") counts.absent++;
+    else if (status === "holiday") counts.holiday++;
+    else if (status === "absent") counts.absent++;
     else {
       warnings.push(`Unknown status "${rec.status}" on day ${day}`);
-      // unknown status: exclude entirely, no credit, not counted as absent
     }
   }
 
@@ -151,6 +146,30 @@ const computePayroll = ({
     bulkDays === null || bulkDays === undefined || bulkDays === ""
       ? null
       : Number(bulkDays);
+
+  // ---------- Weekly-holiday math ----------
+  // Days with a status (pending and not-employed do not count).
+  const accountedDays =
+    counts.full + counts.half + counts.holiday + counts.absent;
+
+  // One paid weekly holiday per 7 accounted days, capped at 4 per month.
+  const expectedHolidays = Math.min(4, Math.floor(accountedDays / 7));
+  const expectedWorkDays = Math.max(0, accountedDays - expectedHolidays);
+
+  // Actual work credits: full = 1, half = 0.5
+  const actualWorkCredits = counts.full + counts.half * 0.5;
+
+  // Extra credits only when the employee worked MORE than the expected
+  // work days (i.e. worked through their weekly holidays).
+  const extraHolidayCredits = round2(
+    Math.max(0, actualWorkCredits - expectedWorkDays)
+  );
+
+  if (counts.holiday > 4) {
+    warnings.push(
+      `Holidays marked (${counts.holiday}) exceed monthly limit of 4.`
+    );
+  }
 
   let paidDays = 0;
   let usedBulk = false;
@@ -171,7 +190,7 @@ const computePayroll = ({
       counts.full * 1 +
         counts.half * 0.5 +
         counts.holiday * 1 +
-        counts.holidayWorked * 2
+        extraHolidayCredits
     );
   } else if (bulkNum === 0) {
     paidDays = 0;
@@ -180,7 +199,7 @@ const computePayroll = ({
       counts.full * 1 +
         counts.half * 0.5 +
         counts.holiday * 1 +
-        counts.holidayWorked * 2
+        extraHolidayCredits
     );
   }
 
@@ -196,6 +215,8 @@ const computePayroll = ({
     dailyRate,
     hourlyRate,
     counts,
+    expectedHolidays,
+    extraHolidayCredits,
     paidDays,
     basePay,
     overtimePay,
@@ -267,7 +288,7 @@ export default function SingleCompanyAdmin({
   // Attendance & Reports
   const [dailyStatus, setDailyStatus] = useState({});
   const [dailyCheckIn, setDailyCheckIn] = useState({});
-  const [dailyHolidayWorked, setDailyHolidayWorked] = useState({});
+  const [monthHolidayCount, setMonthHolidayCount] = useState({});
   const [bulkDays, setBulkDays] = useState({});
   const [bulkReports, setBulkReports] = useState([]);
   const [monthlyReports, setMonthlyReports] = useState([]);
@@ -297,7 +318,6 @@ export default function SingleCompanyAdmin({
   const [calcFull, setCalcFull] = useState(0);
   const [calcHalf, setCalcHalf] = useState(0);
   const [calcHoliday, setCalcHoliday] = useState(0);
-  const [calcHolidayWorked, setCalcHolidayWorked] = useState(0);
   const [calcOvertimeHours, setCalcOvertimeHours] = useState(0);
   const [calcAdvanceDeductions, setCalcAdvanceDeductions] = useState(0);
   const [calcResult, setCalcResult] = useState(null);
@@ -692,9 +712,7 @@ export default function SingleCompanyAdmin({
       const empIds = employees.map((e) => e.id);
       const { data, error } = await supabase
         .from("attendance")
-        .select(
-          "id, employee_id, date, status, check_in_time, worked_on_holiday"
-        )
+        .select("id, employee_id, date, status, check_in_time")
         .in("employee_id", empIds)
         .eq("company_id", companyId)
         .order("date", { ascending: false });
@@ -736,7 +754,7 @@ export default function SingleCompanyAdmin({
     try {
       const { data, error } = await supabase
         .from("attendance")
-        .select("employee_id, status, check_in_time, worked_on_holiday")
+        .select("employee_id, status, check_in_time")
         .in("employee_id", empIds)
         .eq("date", dateStr)
         .eq("company_id", companyId);
@@ -745,17 +763,36 @@ export default function SingleCompanyAdmin({
 
       const statusMap = {};
       const checkInMap = {};
-      const holidayWorkedMap = {};
       if (data) {
         data.forEach((item) => {
           statusMap[item.employee_id] = item.status;
           checkInMap[item.employee_id] = item.check_in_time || "";
-          holidayWorkedMap[item.employee_id] = !!item.worked_on_holiday;
         });
       }
       setDailyStatus(statusMap);
       setDailyCheckIn(checkInMap);
-      setDailyHolidayWorked(holidayWorkedMap);
+
+      // Load monthly holiday count per employee (for 4-holiday limit)
+      const monthStart = makeDateStr(selectedYear, selectedMonth, 1);
+      const monthEnd = makeDateStr(
+        selectedYear,
+        selectedMonth,
+        daysInMonth(selectedYear, selectedMonth)
+      );
+      const { data: monthHolidays } = await supabase
+        .from("attendance")
+        .select("employee_id")
+        .in("employee_id", empIds)
+        .eq("status", "holiday")
+        .gte("date", monthStart)
+        .lte("date", monthEnd)
+        .eq("company_id", companyId);
+      const holCount = {};
+      (monthHolidays || []).forEach((r) => {
+        holCount[r.employee_id] = (holCount[r.employee_id] || 0) + 1;
+      });
+      setMonthHolidayCount(holCount);
+
       setIsLocked(false);
     } catch (err) {
       triggerToast(`Failed to load attendance: ${err.message}`, "error");
@@ -776,10 +813,26 @@ export default function SingleCompanyAdmin({
 
   const handleStatusChange = (empId, status) => {
     if (isLocked) return;
-    setDailyStatus((prev) => ({ ...prev, [empId]: status }));
-    if (status !== "holiday") {
-      setDailyHolidayWorked((prev) => ({ ...prev, [empId]: false }));
+    const currentStatus = dailyStatus[empId];
+
+    // 4-holiday-per-month limit
+    if (status === "holiday" && currentStatus !== "holiday") {
+      const existing = monthHolidayCount[empId] || 0;
+      // If the currently selected date already has a holiday in the DB,
+      // re-clicking is a no-op; only block when adding a NEW holiday.
+      if (existing >= 4) {
+        const emp = employees.find((e) => e.id === empId);
+        triggerToast(
+          `${
+            emp?.name || "Employee"
+          } already has 4 holidays this month. Cannot add another.`,
+          "error"
+        );
+        return;
+      }
     }
+
+    setDailyStatus((prev) => ({ ...prev, [empId]: status }));
   };
 
   const saveDailyAttendance = async () => {
@@ -807,11 +860,54 @@ export default function SingleCompanyAdmin({
     }
 
     try {
+      // Pre-save validation: 4-holiday-per-month limit
+      const monthStart = makeDateStr(selectedYear, selectedMonth, 1);
+      const monthEnd = makeDateStr(
+        selectedYear,
+        selectedMonth,
+        daysInMonth(selectedYear, selectedMonth)
+      );
+      const { data: existingHols, error: holErr } = await supabase
+        .from("attendance")
+        .select("employee_id, date")
+        .in(
+          "employee_id",
+          employees.map((e) => e.id)
+        )
+        .eq("status", "holiday")
+        .gte("date", monthStart)
+        .lte("date", monthEnd)
+        .eq("company_id", companyId);
+      if (holErr) throw holErr;
+
+      const existingPerEmp = {};
+      (existingHols || []).forEach((h) => {
+        if (h.date !== dateStr) {
+          existingPerEmp[h.employee_id] =
+            (existingPerEmp[h.employee_id] || 0) + 1;
+        }
+      });
+
+      const offenders = [];
+      for (const emp of employees) {
+        const newStatus = dailyStatus[emp.id] || "absent";
+        const total =
+          (existingPerEmp[emp.id] || 0) + (newStatus === "holiday" ? 1 : 0);
+        if (total > 4) offenders.push(emp.name);
+      }
+      if (offenders.length > 0) {
+        triggerToast(
+          `Cannot save — ${offenders.join(
+            ", "
+          )} would have more than 4 holidays this month.`,
+          "error"
+        );
+        return;
+      }
+
       const promises = employees.map(async (emp) => {
         const status = dailyStatus[emp.id] || "absent";
         const checkIn = dailyCheckIn[emp.id] || null;
-        const woh =
-          status === "holiday" && dailyHolidayWorked[emp.id] ? true : false;
 
         const { data: existing, error: findError } = await supabase
           .from("attendance")
@@ -829,7 +925,6 @@ export default function SingleCompanyAdmin({
             .update({
               status,
               check_in_time: checkIn,
-              worked_on_holiday: woh,
             })
             .eq("id", existing.id)
             .eq("company_id", companyId);
@@ -840,7 +935,6 @@ export default function SingleCompanyAdmin({
             date: dateStr,
             status,
             check_in_time: checkIn,
-            worked_on_holiday: woh,
             company_id: companyId,
           });
           if (error) throw error;
@@ -1083,12 +1177,6 @@ export default function SingleCompanyAdmin({
         status: "holiday",
         worked_on_holiday: false,
       });
-    for (let i = 0; i < Number(calcHolidayWorked) && d <= totalDays; i++)
-      synthetic.push({
-        date: makeDateStr(calcYear, calcMonth, d++),
-        status: "holiday",
-        worked_on_holiday: true,
-      });
 
     const result = computePayroll({
       employee: { base_salary: sal },
@@ -1172,7 +1260,6 @@ export default function SingleCompanyAdmin({
           full: 0,
           half: 0,
           holiday: 0,
-          holidayWorked: 0,
           absent: 0,
           total: 0,
         });
@@ -1182,10 +1269,8 @@ export default function SingleCompanyAdmin({
       const s = rec.status;
       if (s === "full") e.full++;
       else if (s === "half") e.half++;
-      else if (s === "holiday") {
-        if (rec.worked_on_holiday) e.holidayWorked++;
-        else e.holiday++;
-      } else if (s === "absent") e.absent++;
+      else if (s === "holiday") e.holiday++;
+      else if (s === "absent") e.absent++;
     });
 
     const rows = Array.from(byEmp.values()).sort(
@@ -1213,11 +1298,10 @@ export default function SingleCompanyAdmin({
         full: acc.full + r.full,
         half: acc.half + r.half,
         holiday: acc.holiday + r.holiday,
-        holidayWorked: acc.holidayWorked + r.holidayWorked,
         absent: acc.absent + r.absent,
         total: acc.total + r.total,
       }),
-      { full: 0, half: 0, holiday: 0, holidayWorked: 0, absent: 0, total: 0 }
+      { full: 0, half: 0, holiday: 0, absent: 0, total: 0 }
     );
 
     const rowsHtml = rows
@@ -1236,12 +1320,9 @@ export default function SingleCompanyAdmin({
           <td style="text-align:center;color:#854d0e;font-weight:bold">${
             r.half
           }</td>
-          <td style="text-align:center;color:#1e40af;font-weight:bold">${
-            r.holiday
-          }</td>
-          <td style="text-align:center;color:#c2410c;font-weight:bold">${
-            r.holidayWorked
-          }</td>
+                    <td style="text-align:center;color:#1e40af;font-weight:bold">${
+                      r.holiday
+                    }</td>
           <td style="text-align:center;color:#991b1b;font-weight:bold">${
             r.absent
           }</td>
@@ -1255,8 +1336,7 @@ export default function SingleCompanyAdmin({
         <td colspan="2" style="font-weight:bold;text-align:right">Total</td>
         <td style="text-align:center;font-weight:bold;color:#166534">${totals.full}</td>
         <td style="text-align:center;font-weight:bold;color:#854d0e">${totals.half}</td>
-        <td style="text-align:center;font-weight:bold;color:#1e40af">${totals.holiday}</td>
-        <td style="text-align:center;font-weight:bold;color:#c2410c">${totals.holidayWorked}</td>
+                <td style="text-align:center;font-weight:bold;color:#1e40af">${totals.holiday}</td>
         <td style="text-align:center;font-weight:bold;color:#991b1b">${totals.absent}</td>
         <td style="text-align:center;font-weight:bold">${totals.total}</td>
       </tr>`;
@@ -1301,12 +1381,9 @@ export default function SingleCompanyAdmin({
             <div class="card"><div class="num" style="color:#854d0e">${
               totals.half
             }</div><div class="lbl">Half</div></div>
-            <div class="card"><div class="num" style="color:#1e40af">${
-              totals.holiday
-            }</div><div class="lbl">Holiday</div></div>
-            <div class="card"><div class="num" style="color:#c2410c">${
-              totals.holidayWorked
-            }</div><div class="lbl">Hol. Worked</div></div>
+                        <div class="card"><div class="num" style="color:#1e40af">${
+                          totals.holiday
+                        }</div><div class="lbl">Holiday</div></div>
             <div class="card"><div class="num" style="color:#991b1b">${
               totals.absent
             }</div><div class="lbl">Absent</div></div>
@@ -1322,8 +1399,7 @@ export default function SingleCompanyAdmin({
                 <th>Employee</th>
                 <th style="width:60px;text-align:center">Full</th>
                 <th style="width:60px;text-align:center">Half</th>
-                <th style="width:70px;text-align:center">Holiday</th>
-                <th style="width:90px;text-align:center">Hol. Worked</th>
+                                <th style="width:70px;text-align:center">Holiday</th>
                 <th style="width:70px;text-align:center">Absent</th>
                 <th style="width:60px;text-align:center">Total</th>
               </tr>
@@ -1332,7 +1408,7 @@ export default function SingleCompanyAdmin({
               ${
                 rowsHtml
                   ? rowsHtml + totalsHtml
-                  : '<tr><td colspan="8" style="text-align:center">No records available</td></tr>'
+                  : '<tr><td colspan="7" style="text-align:center">No records available</td></tr>'
               }
             </tbody>
           </table>
@@ -1368,27 +1444,19 @@ export default function SingleCompanyAdmin({
     const fullCount = sorted.filter((r) => r.status === "full").length;
     const halfCount = sorted.filter((r) => r.status === "half").length;
     const holidayCount = sorted.filter((r) => r.status === "holiday").length;
-    const holidayWorkedCount = sorted.filter(
-      (r) => r.status === "holiday" && r.worked_on_holiday
-    ).length;
     const absentCount = sorted.filter((r) => r.status === "absent").length;
 
     const title = `${companyName} - ${emp.name} - Attendance Report`;
 
     const formattedRows = sorted
       .map((rec, idx) => {
-        const star = rec.worked_on_holiday
-          ? ' <span style="color:#c2410c;font-weight:bold">⭐</span>'
-          : "";
         return `
-        <tr>
-          <td>${idx + 1}</td>
-          <td><strong>${rec.date}</strong></td>
-          <td><span class="badge badge-${rec.status}">${
-          rec.status
-        }</span>${star}</td>
-          <td>${rec.check_in_time || "—"}</td>
-        </tr>`;
+      <tr>
+        <td>${idx + 1}</td>
+        <td><strong>${rec.date}</strong></td>
+        <td><span class="badge badge-${rec.status}">${rec.status}</span></td>
+        <td>${rec.check_in_time || "—"}</td>
+      </tr>`;
       })
       .join("");
 
@@ -1441,8 +1509,7 @@ export default function SingleCompanyAdmin({
             }</div><div class="lbl">Total Logs</div></div>
             <div class="card"><div class="num" style="color:#166534">${fullCount}</div><div class="lbl">Full</div></div>
             <div class="card"><div class="num" style="color:#854d0e">${halfCount}</div><div class="lbl">Half</div></div>
-            <div class="card"><div class="num" style="color:#1e40af">${holidayCount}</div><div class="lbl">Holiday</div></div>
-            <div class="card"><div class="num" style="color:#c2410c">${holidayWorkedCount}</div><div class="lbl">Hol. Worked</div></div>
+                        <div class="card"><div class="num" style="color:#1e40af">${holidayCount}</div><div class="lbl">Holiday</div></div>
             <div class="card"><div class="num" style="color:#991b1b">${absentCount}</div><div class="lbl">Absent</div></div>
           </div>
           <table>
@@ -2871,31 +2938,6 @@ export default function SingleCompanyAdmin({
                               )}
                             </div>
 
-                            {currentStatus === "holiday" && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setDailyHolidayWorked((prev) => ({
-                                    ...prev,
-                                    [emp.id]: !prev[emp.id],
-                                  }))
-                                }
-                                disabled={isLocked && !managersCanPickDates}
-                                className={`px-3 py-2 rounded-[10px] text-[12px] font-semibold border transition-all flex items-center gap-1.5 ${
-                                  dailyHolidayWorked[emp.id]
-                                    ? "bg-[#FF9F0A]/15 border-[#FF9F0A]/40 text-[#FF9F0A]"
-                                    : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white hover:border-white/[0.14]"
-                                } ${
-                                  isLocked && !managersCanPickDates
-                                    ? "opacity-50 cursor-not-allowed"
-                                    : "cursor-pointer"
-                                }`}
-                              >
-                                <Star className="w-3.5 h-3.5" />
-                                Worked (2×)
-                              </button>
-                            )}
-
                             <CustomTimePicker
                               label="In"
                               value={dailyCheckIn[emp.id] || ""}
@@ -3063,11 +3105,8 @@ export default function SingleCompanyAdmin({
                                       key={rec.id}
                                       className="hover:bg-white/[0.02] transition-colors"
                                     >
-                                      <td className="p-3 font-mono text-white flex items-center gap-1.5">
+                                      <td className="p-3 font-mono text-white">
                                         {rec.date}
-                                        {rec.worked_on_holiday && (
-                                          <Star className="w-3.5 h-3.5 fill-[#FF9F0A] text-[#FF9F0A]" />
-                                        )}
                                       </td>
                                       <td className="p-3">
                                         <span
@@ -3333,10 +3372,10 @@ export default function SingleCompanyAdmin({
                             <th className="p-3 text-center">F</th>
                             <th className="p-3 text-center">H</th>
                             <th className="p-3 text-center">Hol</th>
-                            <th className="p-3 text-center">HolW</th>
                             <th className="p-3 text-center">Abs</th>
                             <th className="p-3 text-center">Pend</th>
                             <th className="p-3 text-center">NE</th>
+                            <th className="p-3 text-center">Extra Hol</th>
                             <th className="p-3 text-right">Paid</th>
                             <th className="p-3 text-right">Base Pay</th>
                             <th className="p-3 text-right">Net</th>
@@ -3382,9 +3421,6 @@ export default function SingleCompanyAdmin({
                               <td className="p-3 text-center text-[#0A84FF] font-semibold text-[12px]">
                                 {r.counts?.holiday ?? 0}
                               </td>
-                              <td className="p-3 text-center text-[#FF9F0A] font-semibold text-[12px]">
-                                {r.counts?.holidayWorked ?? 0}
-                              </td>
                               <td className="p-3 text-center text-[#FF6961] font-semibold text-[12px]">
                                 {r.counts?.absent ?? 0}
                               </td>
@@ -3393,6 +3429,9 @@ export default function SingleCompanyAdmin({
                               </td>
                               <td className="p-3 text-center text-white/40 font-semibold text-[12px]">
                                 {r.counts?.notEmployed ?? 0}
+                              </td>
+                              <td className="p-3 text-center text-[#FF9F0A] font-semibold text-[12px]">
+                                {r.extraHolidayCredits ?? 0}
                               </td>
                               <td className="p-3 text-right font-semibold text-white text-[12px]">
                                 {r.paidDays} / {r.totalDays}
@@ -3415,7 +3454,6 @@ export default function SingleCompanyAdmin({
                             <td className="p-3 font-bold text-white uppercase text-[11px] tracking-wider">
                               Total
                             </td>
-                            <td className="p-3"></td>
                             <td className="p-3"></td>
                             <td className="p-3"></td>
                             <td className="p-3"></td>
@@ -3610,7 +3648,7 @@ export default function SingleCompanyAdmin({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                 <CalcInput
                   label="Full Days"
                   placeholder="Full"
@@ -3628,12 +3666,6 @@ export default function SingleCompanyAdmin({
                   placeholder="Hol"
                   value={calcHoliday}
                   onChange={(v) => setCalcHoliday(Number(v))}
-                />
-                <CalcInput
-                  label="Holidays Worked"
-                  placeholder="Hol W"
-                  value={calcHolidayWorked}
-                  onChange={(v) => setCalcHolidayWorked(Number(v))}
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
@@ -3683,7 +3715,7 @@ export default function SingleCompanyAdmin({
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 border-t border-white/[0.06] pt-3 text-[12px]">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 border-t border-white/[0.06] pt-3 text-[12px]">
                     <CalcResultItem
                       label="Full"
                       value={calcResult.counts.full}
@@ -3700,14 +3732,14 @@ export default function SingleCompanyAdmin({
                       color="#0A84FF"
                     />
                     <CalcResultItem
-                      label="Hol. Worked"
-                      value={calcResult.counts.holidayWorked}
-                      color="#FF9F0A"
-                    />
-                    <CalcResultItem
                       label="Absent"
                       value={calcResult.counts.absent}
                       color="#FF6961"
+                    />
+                    <CalcResultItem
+                      label="Extra Hol"
+                      value={calcResult.extraHolidayCredits}
+                      color="#FF9F0A"
                     />
                     <CalcResultItem
                       label="Pending"
@@ -3891,3 +3923,25 @@ function CalcResultItem({ label, value, color }) {
     </div>
   );
 }
+
+/* ============================================================
+   QUICK SELF-TEST — verify computePayroll outputs
+   Base 30,000 · 30-day month · dailyRate = 1,000
+
+   A. 26F + 4 Hol                → extra=0  paid=30.0 → 30,000.00
+   B. 27F + 3 Hol                → extra=1  paid=31.0 → 31,000.00
+   C. 30F (worked every day)     → extra=4  paid=34.0 → 34,000.00
+   D. 23F + 2 Hol + 5 Abs        → extra=0  paid=25.0 → 25,000.00
+   E. 26F + 4 Abs (no holidays)  → extra=0  paid=26.0 → 26,000.00
+   F. 25F + 4 Half + 1 Abs       → extra=1  paid=28.0 → 28,000.00
+   G. 15F (mid-month, 15 days)   → extra=2  paid=17.0 → 17,000.00
+                                       (provisional)
+   H. 6F + 1 Hol in 7-day window → extra=0  paid=7.0  → 7,000.00
+   I. 7F in 7-day window         → extra=1  paid=8.0  → 8,000.00
+   J. Holiday count > 4          → warning badge shown
+   K. Bulk = 35 in 30-day month  → clamped to 30 + warning
+   L. Bulk = 0 + daily rows      → daily used + warning
+   M. Status "LATE" (unknown)    → excluded + warning
+   N. Base 33,333, 31 days       → dailyRate 1,075.26
+   O. 10 OT hours, daily 1,000   → OT = 10 × 125 × 1.25 = 1,562.50
+   ============================================================ */
