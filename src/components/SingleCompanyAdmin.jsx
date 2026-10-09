@@ -1250,7 +1250,126 @@ export default function SingleCompanyAdmin({
       return rec.date < todayISO;
     });
 
-    // Group by employee → one row per employee
+    const distinctDates = Array.from(
+      new Set(eligibleRecords.map((r) => r.date))
+    ).sort();
+
+    const isSingleDay = distinctDates.length === 1;
+
+    // ------- SINGLE DAY: legacy flat design -------
+    if (isSingleDay) {
+      const sortedBySalary = [...eligibleRecords].sort((a, b) => {
+        const ea = employees.find((e) => e.id === a.employee_id);
+        const eb = employees.find((e) => e.id === b.employee_id);
+        const sa = Number(ea?.base_salary || 0);
+        const sb = Number(eb?.base_salary || 0);
+        if (sb !== sa) return sb - sa;
+        return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+      });
+
+      const dateLabel =
+        distinctDates.length === 1
+          ? `Report Date: ${formatDate(distinctDates[0])}`
+          : `Report Date: ${formatDate(todayStr)}`;
+
+      const title = `${companyName} - Daily Attendance Report`;
+
+      const formattedRows = sortedBySalary
+        .map((rec, idx) => {
+          const emp = employees.find((e) => e.id === rec.employee_id);
+          return `
+          <tr>
+            <td>${idx + 1}</td>
+            <td><strong>${rec.date}</strong></td>
+            <td>${emp ? emp.name : "Unknown Employee"}</td>
+            <td><span class="badge badge-${rec.status}">${
+            rec.status
+          }</span></td>
+            <td>${rec.check_in_time || "—"}</td>
+          </tr>
+        `;
+        })
+        .join("");
+
+      const totalRecords = sortedBySalary.length;
+      const fullCount = sortedBySalary.filter(
+        (r) => r.status === "full"
+      ).length;
+      const halfCount = sortedBySalary.filter(
+        (r) => r.status === "half"
+      ).length;
+      const holidayCount = sortedBySalary.filter(
+        (r) => r.status === "holiday"
+      ).length;
+      const absentCount = sortedBySalary.filter(
+        (r) => r.status === "absent"
+      ).length;
+
+      const win = window.open("", "_blank", "width=950,height=800");
+      win.document.write(`
+        <html>
+          <head>
+            <title>${title}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 24px; color: #1e293b; }
+              .header { border-bottom: 2px solid #7c5cff; padding-bottom: 12px; margin-bottom: 20px; }
+              .company { font-size: 22px; font-weight: bold; color: #0f172a; }
+              .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
+              .date-label { font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 8px; }
+              .summary-box { display: flex; gap: 12px; margin-bottom: 20px; }
+              .card { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; }
+              .card .num { font-size: 18px; font-weight: bold; color: #0f172a; }
+              .card .lbl { font-size: 10px; color: #64748b; text-transform: uppercase; margin-top: 2px; }
+              table { width: 100%; border-collapse: collapse; font-size: 12px; }
+              th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+              th { background-color: #f1f5f9; font-weight: bold; color: #334155; }
+              .badge { padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+              .badge-full { background: #dcfce7; color: #166534; }
+              .badge-half { background: #fef9c3; color: #854d0e; }
+              .badge-holiday { background: #dbeafe; color: #1e40af; }
+              .badge-absent { background: #fee2e2; color: #991b1b; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="company">${companyName}</div>
+              <div class="subtitle">Daily Attendance Report</div>
+              <div class="date-label">${dateLabel}</div>
+            </div>
+            <div class="summary-box">
+              <div class="card"><div class="num">${totalRecords}</div><div class="lbl">Total Employees</div></div>
+              <div class="card"><div class="num" style="color:#166534">${fullCount}</div><div class="lbl">Full Days</div></div>
+              <div class="card"><div class="num" style="color:#854d0e">${halfCount}</div><div class="lbl">Half Days</div></div>
+              <div class="card"><div class="num" style="color:#1e40af">${holidayCount}</div><div class="lbl">Holidays</div></div>
+              <div class="card"><div class="num" style="color:#991b1b">${absentCount}</div><div class="lbl">Absents</div></div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:44px">#</th>
+                  <th>Date</th>
+                  <th>Employee Name</th>
+                  <th>Attendance Status</th>
+                  <th>Check‑in Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  formattedRows.length > 0
+                    ? formattedRows
+                    : '<tr><td colspan="5" style="text-align:center">No records available</td></tr>'
+                }
+              </tbody>
+            </table>
+          </body>
+        </html>
+      `);
+      win.document.close();
+      setTimeout(() => win.print(), 400);
+      return;
+    }
+
+    // ------- MULTI-DAY: aggregated one-row-per-employee -------
     const byEmp = new Map();
     eligibleRecords.forEach((rec) => {
       if (!byEmp.has(rec.employee_id)) {
@@ -1278,18 +1397,12 @@ export default function SingleCompanyAdmin({
         Number(b.emp?.base_salary || 0) - Number(a.emp?.base_salary || 0)
     );
 
-    // Date label
-    const allDates = Array.from(
-      new Set(eligibleRecords.map((r) => r.date))
-    ).sort();
     let dateLabel;
-    if (allDates.length === 0) {
+    if (distinctDates.length === 0) {
       dateLabel = `Report Date: ${formatDate(todayStr)}`;
-    } else if (allDates.length === 1) {
-      dateLabel = `Report Date: ${formatDate(allDates[0])}`;
     } else {
-      dateLabel = `From ${formatDate(allDates[0])} to ${formatDate(
-        allDates[allDates.length - 1]
+      dateLabel = `From ${formatDate(distinctDates[0])} to ${formatDate(
+        distinctDates[distinctDates.length - 1]
       )}`;
     }
 
@@ -1320,9 +1433,9 @@ export default function SingleCompanyAdmin({
           <td style="text-align:center;color:#854d0e;font-weight:bold">${
             r.half
           }</td>
-                    <td style="text-align:center;color:#1e40af;font-weight:bold">${
-                      r.holiday
-                    }</td>
+          <td style="text-align:center;color:#1e40af;font-weight:bold">${
+            r.holiday
+          }</td>
           <td style="text-align:center;color:#991b1b;font-weight:bold">${
             r.absent
           }</td>
@@ -1336,7 +1449,7 @@ export default function SingleCompanyAdmin({
         <td colspan="2" style="font-weight:bold;text-align:right">Total</td>
         <td style="text-align:center;font-weight:bold;color:#166534">${totals.full}</td>
         <td style="text-align:center;font-weight:bold;color:#854d0e">${totals.half}</td>
-                <td style="text-align:center;font-weight:bold;color:#1e40af">${totals.holiday}</td>
+        <td style="text-align:center;font-weight:bold;color:#1e40af">${totals.holiday}</td>
         <td style="text-align:center;font-weight:bold;color:#991b1b">${totals.absent}</td>
         <td style="text-align:center;font-weight:bold">${totals.total}</td>
       </tr>`;
@@ -1381,9 +1494,9 @@ export default function SingleCompanyAdmin({
             <div class="card"><div class="num" style="color:#854d0e">${
               totals.half
             }</div><div class="lbl">Half</div></div>
-                        <div class="card"><div class="num" style="color:#1e40af">${
-                          totals.holiday
-                        }</div><div class="lbl">Holiday</div></div>
+            <div class="card"><div class="num" style="color:#1e40af">${
+              totals.holiday
+            }</div><div class="lbl">Holiday</div></div>
             <div class="card"><div class="num" style="color:#991b1b">${
               totals.absent
             }</div><div class="lbl">Absent</div></div>
@@ -1399,7 +1512,7 @@ export default function SingleCompanyAdmin({
                 <th>Employee</th>
                 <th style="width:60px;text-align:center">Full</th>
                 <th style="width:60px;text-align:center">Half</th>
-                                <th style="width:70px;text-align:center">Holiday</th>
+                <th style="width:70px;text-align:center">Holiday</th>
                 <th style="width:70px;text-align:center">Absent</th>
                 <th style="width:60px;text-align:center">Total</th>
               </tr>
