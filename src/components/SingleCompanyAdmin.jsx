@@ -3486,11 +3486,8 @@ export default function SingleCompanyAdmin({
                             <th className="p-3 text-center">H</th>
                             <th className="p-3 text-center">Hol</th>
                             <th className="p-3 text-center">Abs</th>
-                            <th className="p-3 text-center">Pend</th>
-                            <th className="p-3 text-center">NE</th>
                             <th className="p-3 text-center">Extra Hol</th>
-                            <th className="p-3 text-right">Paid</th>
-                            <th className="p-3 text-right">Base Pay</th>
+                            <th className="p-3 text-right">Paid Days</th>
                             <th className="p-3 text-right">Net</th>
                             <th className="p-3 text-right">Balance</th>
                           </tr>
@@ -3523,7 +3520,10 @@ export default function SingleCompanyAdmin({
                                 </div>
                               </td>
                               <td className="p-3 text-right font-mono text-white/85 text-[12px]">
-                                {Number(r.base_salary).toLocaleString()}
+                                {Number(r.base_salary).toLocaleString("en-PK", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                               </td>
                               <td className="p-3 text-center text-[#30D158] font-semibold text-[12px]">
                                 {r.counts?.full ?? 0}
@@ -3537,26 +3537,23 @@ export default function SingleCompanyAdmin({
                               <td className="p-3 text-center text-[#FF6961] font-semibold text-[12px]">
                                 {r.counts?.absent ?? 0}
                               </td>
-                              <td className="p-3 text-center text-white/50 font-semibold text-[12px]">
-                                {r.counts?.pending ?? 0}
-                              </td>
-                              <td className="p-3 text-center text-white/40 font-semibold text-[12px]">
-                                {r.counts?.notEmployed ?? 0}
-                              </td>
                               <td className="p-3 text-center text-[#FF9F0A] font-semibold text-[12px]">
                                 {r.extraHolidayCredits ?? 0}
                               </td>
                               <td className="p-3 text-right font-semibold text-white text-[12px]">
                                 {r.paidDays} / {r.totalDays}
                               </td>
-                              <td className="p-3 text-right font-mono font-bold text-white/85 text-[12px]">
-                                {formatPKR(r.basePay)}
-                              </td>
                               <td className="p-3 text-right font-mono font-bold text-[#30D158] text-[12px]">
-                                {formatPKR(r.netPayable)}
+                                {Number(r.netPayable).toLocaleString("en-PK", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                               </td>
                               <td className="p-3 text-right font-mono font-bold text-[#FFD60A] text-[12px]">
-                                {formatPKR(r.balance)}
+                                {Number(r.balance).toLocaleString("en-PK", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                               </td>
                             </tr>
                           ))}
@@ -3567,37 +3564,44 @@ export default function SingleCompanyAdmin({
                             <td className="p-3 font-bold text-white uppercase text-[11px] tracking-wider">
                               Total
                             </td>
-                            <td className="p-3"></td>
-                            <td className="p-3"></td>
-                            <td className="p-3"></td>
-                            <td className="p-3"></td>
-                            <td className="p-3"></td>
-                            <td className="p-3"></td>
-                            <td className="p-3"></td>
-                            <td className="p-3"></td>
                             <td className="p-3 text-right font-mono font-bold text-white/85 text-[12px]">
-                              {formatPKR(
+                              {Number(
                                 monthlyReports.reduce(
-                                  (s, r) => s + Number(r.basePay || 0),
+                                  (s, r) => s + Number(r.base_salary || 0),
                                   0
                                 )
-                              )}
+                              ).toLocaleString("en-PK", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
+                            <td className="p-3"></td>
                             <td className="p-3 text-right font-mono font-extrabold text-[#30D158] text-[13px]">
-                              {formatPKR(
+                              {Number(
                                 monthlyReports.reduce(
                                   (s, r) => s + Number(r.netPayable || 0),
                                   0
                                 )
-                              )}
+                              ).toLocaleString("en-PK", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </td>
                             <td className="p-3 text-right font-mono font-bold text-[#FFD60A] text-[12px]">
-                              {formatPKR(
+                              {Number(
                                 monthlyReports.reduce(
                                   (s, r) => s + Number(r.balance || 0),
                                   0
                                 )
-                              )}
+                              ).toLocaleString("en-PK", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </td>
                           </tr>
                         </tfoot>
