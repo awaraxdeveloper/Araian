@@ -1044,7 +1044,7 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
             value={filterWorker}
             onChange={setFilterWorker}
             options={[
-              { value: "", label: "All workers" },
+              { value: "", label: "Everyone" },
               ...workers.map((w) => ({ value: w.id, label: w.name })),
             ]}
           />
@@ -1128,7 +1128,12 @@ export default function FeedbackAdminDashboard({ companyId, companyName }) {
         />
       )}
       {!loading && subTab === "workers" && (
-        <WorkersView workerStats={workerStats} onOpenWorker={setWorkerDetail} />
+        <WorkersView
+          workerStats={workerStats}
+          onOpenWorker={setWorkerDetail}
+          filterWorker={filterWorker}
+          setFilterWorker={setFilterWorker}
+        />
       )}
       {!loading && subTab === "attention" && (
         <AttentionView
@@ -1505,6 +1510,8 @@ function ResponseRow({ r, areaMap, bikeModelMap, onOpen }) {
 }
 
 function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
+  const [sort, setSort] = useState("newest");
+
   if (responses.length === 0) {
     return (
       <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-8 text-center">
@@ -1513,10 +1520,45 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
     );
   }
 
+  const sorted = [...responses].sort((a, b) => {
+    if (sort === "newest")
+      return new Date(b.created_at) - new Date(a.created_at);
+    if (sort === "oldest")
+      return new Date(a.created_at) - new Date(b.created_at);
+    if (sort === "rating_high")
+      return (b.rating_overall || 0) - (a.rating_overall || 0);
+    if (sort === "rating_low")
+      return (a.rating_overall || 6) - (b.rating_overall || 6);
+    return 0;
+  });
+
+  const options = [
+    { id: "newest", label: "Newest" },
+    { id: "oldest", label: "Oldest" },
+    { id: "rating_high", label: "Highest Rating" },
+    { id: "rating_low", label: "Lowest Rating" },
+  ];
+
   return (
     <>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            onClick={() => setSort(o.id)}
+            className={`h-10 px-3.5 rounded-[10px] text-[12px] font-semibold uppercase tracking-wide border transition-all ${
+              sort === o.id
+                ? "bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] border-[#7C5CFF]/40 text-white"
+                : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
       <div className="md:hidden space-y-2.5">
-        {responses.map((r) => (
+        {sorted.map((r) => (
           <ResponseRow
             key={r.id}
             r={r}
@@ -1546,7 +1588,7 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {responses.map((r, i) => (
+              {sorted.map((r, i) => (
                 <tr
                   key={r.id}
                   className="hover:bg-white/[0.02] transition-colors"
@@ -1612,7 +1654,14 @@ function ResponsesView({ responses, areaMap, bikeModelMap, onOpenDetail }) {
   );
 }
 
-function WorkersView({ workerStats, onOpenWorker }) {
+function WorkersView({
+  workerStats,
+  onOpenWorker,
+  filterWorker,
+  setFilterWorker,
+}) {
+  const [sort, setSort] = useState("total");
+
   if (workerStats.length === 0) {
     return (
       <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-8 text-center">
@@ -1620,76 +1669,128 @@ function WorkersView({ workerStats, onOpenWorker }) {
       </div>
     );
   }
+
+  const sorted = [...workerStats].sort((a, b) => {
+    if (sort === "total") return b.total - a.total;
+    if (sort === "overall_high") return b.avgOverall - a.avgOverall;
+    if (sort === "overall_low") return a.avgOverall - b.avgOverall;
+    if (sort === "rec_high") return b.recPct - a.recPct;
+    if (sort === "complaints") return b.complaints - a.complaints;
+    return 0;
+  });
+
+  const options = [
+    { id: "total", label: "Most Worked" },
+    { id: "overall_high", label: "Best Rating" },
+    { id: "overall_low", label: "Lowest Rating" },
+    { id: "rec_high", label: "Highest Recommend" },
+    { id: "complaints", label: "Most Complaints" },
+  ];
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-      {workerStats.map((w) => (
-        <button
-          key={w.id}
-          onClick={() => onOpenWorker(w)}
-          className="text-left bg-[#1C1C1E] border border-white/[0.06] hover:border-white/[0.12] rounded-[20px] p-5 transition-colors active:scale-[0.99]"
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="p-2.5 bg-[#7C5CFF]/10 border border-[#7C5CFF]/20 rounded-[12px]">
-              <Wrench className="w-5 h-5 text-[#A390FF]" />
-            </div>
-            {w.lows > 0 && (
-              <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF6961]">
-                {w.lows} low
-              </span>
-            )}
-          </div>
-          <h4 className="font-bold text-white text-[18px] sm:text-[16px] truncate">
-            {w.name}
-          </h4>
-          <p className="text-[14px] sm:text-[13px] text-white/50 mt-0.5">
-            {w.total} bike{w.total !== 1 ? "s" : ""} worked
+    <div className="space-y-4">
+      {filterWorker && (
+        <div className="flex items-center justify-between gap-3 bg-[#7C5CFF]/10 border border-[#7C5CFF]/25 rounded-[14px] px-4 py-3">
+          <p className="text-[14px] font-semibold text-white">
+            Filtered to one worker — sort options need more workers to compare.
           </p>
-          <div className="grid grid-cols-2 gap-2.5 mt-4">
-            <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
-              <span className="text-[12px] text-white/40 block mb-0.5">
-                Overall
-              </span>
-              <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
-                {w.avgOverall > 0 ? w.avgOverall.toFixed(2) : "—"}
-              </span>
+          <button
+            onClick={() => setFilterWorker("")}
+            className="h-9 px-4 rounded-[10px] bg-white/[0.08] hover:bg-white/[0.12] border border-white/[0.12] text-[13px] font-semibold text-white whitespace-nowrap shrink-0"
+          >
+            Show Everyone
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            onClick={() => setSort(o.id)}
+            className={`h-10 px-3.5 rounded-[10px] text-[12px] font-semibold uppercase tracking-wide border transition-all ${
+              sort === o.id
+                ? "bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] border-[#7C5CFF]/40 text-white"
+                : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+        {sorted.map((w) => (
+          <button
+            key={w.id}
+            onClick={() => onOpenWorker(w)}
+            className="text-left bg-[#1C1C1E] border border-white/[0.06] hover:border-white/[0.12] rounded-[20px] p-5 transition-colors active:scale-[0.99]"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="p-2.5 bg-[#7C5CFF]/10 border border-[#7C5CFF]/20 rounded-[12px]">
+                <Wrench className="w-5 h-5 text-[#A390FF]" />
+              </div>
+              {w.lows > 0 && (
+                <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[#FF453A]/10 border border-[#FF453A]/25 text-[#FF6961]">
+                  {w.lows} low
+                </span>
+              )}
             </div>
-            <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
-              <span className="text-[12px] text-white/40 block mb-0.5">
-                Service
-              </span>
-              <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
-                {w.avgService > 0 ? w.avgService.toFixed(2) : "—"}
-              </span>
-            </div>
-            <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
-              <span className="text-[12px] text-white/40 block mb-0.5">
-                Explain
-              </span>
-              <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
-                {w.avgExplain > 0 ? w.avgExplain.toFixed(2) : "—"}
-              </span>
-            </div>
-            <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
-              <span className="text-[12px] text-white/40 block mb-0.5">
-                Rec %
-              </span>
-              <span className="font-mono font-bold text-[#30D158] text-[16px] sm:text-[14px]">
-                {w.recPct}%
-              </span>
-            </div>
-          </div>
-          {w.complaints > 0 && (
-            <p className="text-[14px] text-[#FF6961] mt-3 font-semibold">
-              {w.complaints} complaint{w.complaints > 1 ? "s" : ""}
+            <h4 className="font-bold text-white text-[18px] sm:text-[16px] truncate">
+              {w.name}
+            </h4>
+            <p className="text-[14px] sm:text-[13px] text-white/50 mt-0.5">
+              {w.total} bike{w.total !== 1 ? "s" : ""} worked
             </p>
-          )}
-        </button>
-      ))}
+            <div className="grid grid-cols-2 gap-2.5 mt-4">
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
+                <span className="text-[12px] text-white/40 block mb-0.5">
+                  Overall
+                </span>
+                <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
+                  {w.avgOverall > 0 ? w.avgOverall.toFixed(2) : "—"}
+                </span>
+              </div>
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
+                <span className="text-[12px] text-white/40 block mb-0.5">
+                  Service
+                </span>
+                <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
+                  {w.avgService > 0 ? w.avgService.toFixed(2) : "—"}
+                </span>
+              </div>
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
+                <span className="text-[12px] text-white/40 block mb-0.5">
+                  Explain
+                </span>
+                <span className="font-mono font-bold text-[#FFD60A] text-[16px] sm:text-[14px]">
+                  {w.avgExplain > 0 ? w.avgExplain.toFixed(2) : "—"}
+                </span>
+              </div>
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-[10px] p-2.5">
+                <span className="text-[12px] text-white/40 block mb-0.5">
+                  Rec %
+                </span>
+                <span className="font-mono font-bold text-[#30D158] text-[16px] sm:text-[14px]">
+                  {w.recPct}%
+                </span>
+              </div>
+            </div>
+            {w.complaints > 0 && (
+              <p className="text-[14px] text-[#FF6961] mt-3 font-semibold">
+                {w.complaints} complaint{w.complaints > 1 ? "s" : ""}
+              </p>
+            )}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
 function AttentionView({ list, areaMap, onOpenDetail }) {
+  const [sort, setSort] = useState("severity");
+
   if (list.length === 0) {
     return (
       <div className="bg-[#1C1C1E] border border-white/[0.06] rounded-[20px] p-8 text-center">
@@ -1700,17 +1801,56 @@ function AttentionView({ list, areaMap, onOpenDetail }) {
       </div>
     );
   }
+
+  const sorted = [...list].sort((a, b) => {
+    if (sort === "newest")
+      return new Date(b.created_at) - new Date(a.created_at);
+    if (sort === "oldest")
+      return new Date(a.created_at) - new Date(b.created_at);
+    if (sort === "severity") {
+      const la = isLow(a) ? 1 : 0;
+      const lb = isLow(b) ? 1 : 0;
+      if (lb !== la) return lb - la;
+      return new Date(b.created_at) - new Date(a.created_at);
+    }
+    return 0;
+  });
+
+  const options = [
+    { id: "severity", label: "Severity" },
+    { id: "newest", label: "Newest" },
+    { id: "oldest", label: "Oldest" },
+  ];
+
   return (
-    <div className="space-y-2.5">
-      {list.map((r) => (
-        <ResponseRow
-          key={r.id}
-          r={r}
-          areaMap={areaMap}
-          bikeModelMap={{}}
-          onOpen={() => onOpenDetail(r)}
-        />
-      ))}
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            onClick={() => setSort(o.id)}
+            className={`h-10 px-3.5 rounded-[10px] text-[12px] font-semibold uppercase tracking-wide border transition-all ${
+              sort === o.id
+                ? "bg-gradient-to-b from-[#8B6EFF] to-[#6B4FE8] border-[#7C5CFF]/40 text-white"
+                : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:text-white"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2.5">
+        {sorted.map((r) => (
+          <ResponseRow
+            key={r.id}
+            r={r}
+            areaMap={areaMap}
+            bikeModelMap={{}}
+            onOpen={() => onOpenDetail(r)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

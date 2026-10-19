@@ -21,6 +21,7 @@ import {
   X,
   Calendar,
   Hash,
+  Plus,
 } from "lucide-react";
 
 // TOTAL_STEPS is now dynamic — computed at runtime from the questions table.
@@ -569,6 +570,10 @@ export default function FeedbackFlow({
   const [mobileSuggestions, setMobileSuggestions] = useState([]);
   const [bikeSuggestions, setBikeSuggestions] = useState([]);
 
+  const [addAreaOpen, setAddAreaOpen] = useState(false);
+  const [newAreaName, setNewAreaName] = useState("");
+  const [addingArea, setAddingArea] = useState(false);
+
   const activeQuestions = React.useMemo(
     () => questions.filter((q) => q.active),
     [questions]
@@ -578,6 +583,40 @@ export default function FeedbackFlow({
   const triggerToast = (message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleAddArea = async () => {
+    const v = newAreaName.trim();
+    if (!v) return;
+    setAddingArea(true);
+    const maxSort = areas.reduce((m, a) => Math.max(m, a.sort_order || 0), 0);
+    const { data, error } = await supabase
+      .from("fb_areas")
+      .insert({
+        company_id: companyId,
+        name: v,
+        sort_order: v.toLowerCase() === "other" ? 999 : maxSort + 1,
+        active: true,
+      })
+      .select("id,name")
+      .single();
+    if (error) {
+      triggerToast(`Failed to add area: ${error.message}`, "error");
+      setAddingArea(false);
+      return;
+    }
+    const { data: refreshed } = await supabase
+      .from("fb_areas")
+      .select("id,name")
+      .eq("company_id", companyId)
+      .eq("active", true)
+      .order("sort_order");
+    setAreas(refreshed || []);
+    setForm((prev) => ({ ...prev, areaId: data.id }));
+    triggerToast(`Area "${v}" added`);
+    setNewAreaName("");
+    setAddAreaOpen(false);
+    setAddingArea(false);
   };
 
   const setField = (key, value) =>
@@ -711,97 +750,17 @@ export default function FeedbackFlow({
     draftId,
   ]);
 
-  // Autosuggests
   useEffect(() => {
-    const q = form.name.trim();
-    if (q.length < 2) return setNameSuggestions([]);
-    const t = setTimeout(async () => {
-      const { data } = await supabase
-        .from("fb_customers")
-        .select("id,name,mobile,area_id,address")
-        .eq("company_id", companyId)
-        .ilike("name", `%${q}%`)
-        .limit(8);
-      setNameSuggestions(
-        (data || []).map((c) => ({
-          id: c.id,
-          primary: c.name,
-          secondary: c.mobile,
-          name: c.name,
-          mobile: c.mobile,
-          area_id: c.area_id,
-          address: c.address,
-        }))
-      );
-    }, 250);
-    return () => clearTimeout(t);
-  }, [form.name, companyId]);
+    setNameSuggestions([]);
+  }, [form.name]);
 
   useEffect(() => {
-    const q = form.mobile.replace(/\D/g, "");
-    if (q.length < 3) return setMobileSuggestions([]);
-    const t = setTimeout(async () => {
-      const { data } = await supabase
-        .from("fb_customers")
-        .select("id,name,mobile,area_id,address")
-        .eq("company_id", companyId)
-        .ilike("mobile", `%${q}%`)
-        .limit(8);
-      setMobileSuggestions(
-        (data || []).map((c) => ({
-          id: c.id,
-          primary: c.mobile,
-          secondary: c.name,
-          name: c.name,
-          mobile: c.mobile,
-          area_id: c.area_id,
-          address: c.address,
-        }))
-      );
-    }, 250);
-    return () => clearTimeout(t);
-  }, [form.mobile, companyId]);
+    setMobileSuggestions([]);
+  }, [form.mobile]);
 
   useEffect(() => {
-    const q = form.bikeRegNo.trim();
-    if (q.length < 2) return setBikeSuggestions([]);
-    const t = setTimeout(async () => {
-      const { data } = await supabase
-        .from("fb_responses")
-        .select(
-          "bike_reg_no,bike_model_id,bike_year,customer_id,fb_customers(name,mobile,area_id,address)"
-        )
-        .eq("company_id", companyId)
-        .ilike("bike_reg_no", `${q}%`)
-        .order("created_at", { ascending: false })
-        .limit(8);
-      const seen = new Set();
-      const dedup = [];
-      (data || []).forEach((r) => {
-        if (seen.has(r.bike_reg_no)) return;
-        seen.add(r.bike_reg_no);
-        dedup.push({
-          bike_reg_no: r.bike_reg_no,
-          bike_model_id: r.bike_model_id,
-          bike_year: r.bike_year,
-          customer: r.fb_customers,
-        });
-      });
-      setBikeSuggestions(
-        dedup.map((r) => ({
-          id: r.bike_reg_no,
-          primary: r.bike_reg_no,
-          secondary: r.customer?.name
-            ? `${r.customer.name} · ${r.customer.mobile || ""}`
-            : "",
-          bike_model_id: r.bike_model_id,
-          bike_year: r.bike_year,
-          customer: r.customer,
-        }))
-      );
-    }, 250);
-    return () => clearTimeout(t);
-  }, [form.bikeRegNo, companyId]);
+    setBikeSuggestions([]);
+  }, [form.bikeRegNo]);
 
   const applyCustomerSuggestion = async (s) => {
     setForm((prev) => ({
@@ -894,7 +853,7 @@ export default function FeedbackFlow({
           .from("fb_customers")
           .insert({
             company_id: companyId,
-            name: form.name.trim(),
+            name: form.name.trim().toUpperCase(),
             mobile: form.mobile.replace(/\D/g, ""),
             area_id: form.areaId || null,
             area_other_text: (form.areaOther || "").trim() || null,
@@ -1230,6 +1189,7 @@ export default function FeedbackFlow({
             onPickName={applyCustomerSuggestion}
             onPickMobile={applyCustomerSuggestion}
             onPickBike={applyBikeSuggestion}
+            onAddArea={() => setAddAreaOpen(true)}
           />
         )}
 
@@ -1321,6 +1281,49 @@ export default function FeedbackFlow({
           </button>
         </div>
       </div>
+
+      {addAreaOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => !addingArea && setAddAreaOpen(false)}
+        >
+          <div
+            className="w-full sm:max-w-md bg-[#1C1C1E] border-t sm:border border-white/[0.08] rounded-t-[24px] sm:rounded-[20px] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[17px] font-bold text-white mb-3">
+              Add New Area
+            </h3>
+            <input
+              type="text"
+              autoFocus
+              value={newAreaName}
+              onChange={(e) => setNewAreaName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddArea()}
+              placeholder="e.g. DHA Phase 5"
+              className="w-full h-12 bg-white/[0.03] border border-white/[0.08] rounded-[12px] px-4 text-[16px] text-white placeholder-white/30 focus:outline-none focus:border-[#7C5CFF]/60"
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => setAddAreaOpen(false)}
+                disabled={addingArea}
+                className="flex-1 h-11 rounded-[12px] bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[14px] font-semibold text-white/85"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddArea}
+                disabled={addingArea || !newAreaName.trim()}
+                className={`flex-1 h-11 rounded-[12px] text-[14px] font-semibold text-white border border-[#7C5CFF]/40 disabled:opacity-50 ${btnPrimary}`}
+              >
+                {addingArea ? "Adding…" : "Add Area"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] max-w-[90vw]">
@@ -1449,6 +1452,7 @@ function StepCustomer({
   onPickName,
   onPickMobile,
   onPickBike,
+  onAddArea,
 }) {
   const areaOptions = areas.map((a) => ({ value: a.id, label: a.name }));
   const bikeModelOptions = bikeModels.map((m) => ({
@@ -1484,7 +1488,7 @@ function StepCustomer({
             icon={User}
             required
             value={form.name}
-            onChange={(v) => setField("name", v)}
+            onChange={(v) => setField("name", v.toUpperCase())}
             suggestions={nameSuggestions}
             onSelect={onPickName}
           />
@@ -1508,6 +1512,14 @@ function StepCustomer({
             onChange={(v) => setField("areaId", v)}
             options={areaOptions}
           />
+          <button
+            type="button"
+            onClick={onAddArea}
+            className="w-full flex items-center gap-2 px-4 py-3 text-left text-[15px] font-semibold text-[#A390FF] hover:bg-white/[0.02] active:bg-white/[0.04] transition-colors cursor-pointer border-t border-white/[0.05]"
+          >
+            <Plus className="w-4 h-4" />
+            Add new area
+          </button>
           {showOtherArea && (
             <div className="flex items-center gap-3 px-4 py-3.5">
               <MapPin
